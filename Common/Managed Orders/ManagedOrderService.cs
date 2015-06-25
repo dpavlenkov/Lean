@@ -20,8 +20,9 @@ namespace QuantConnect.ManagedOrders
 
         private int timerMilliseconds = 1000;
         private System.Timers.Timer timer;
-        private object syncLock = new object();
-        private long runRequests;
+        private long requestCount;
+        private object requestCounterLock = new object();
+        private Mutex runMutex = new Mutex();
 
         public ManagedOrderService()
         {
@@ -54,16 +55,38 @@ namespace QuantConnect.ManagedOrders
 
         private async void Run()
         {
-            if (Interlocked.Read(ref runRequests) > 1)
-                return;
+            bool lockAcquired = false;
 
-            Interlocked.Increment(ref runRequests);
-
-            lock (syncLock)
+            lock(requestCounterLock)
             {
-                if (Interlocked.Decrement(ref runRequests) > 0)
-                    return;
-                
+                lockAcquired = runMutex.WaitOne(0);
+
+                if (lockAcquired)
+                {
+                    Interlocked.Exchange(ref requestCount, 0);
+                }
+                else
+                {
+                    if (Interlocked.Read(ref requestCount) > 0)
+                    {
+                        return;
+                    }
+
+                    Interlocked.Increment(ref requestCount);
+                }
+            }
+
+            if (lockAcquired == false)
+                lockAcquired = runMutex.WaitOne();
+
+            if(lockAcquired)
+            {
+                lock (requestCounterLock)
+                {
+                    if (Interlocked.Read(ref requestCount) > 0)
+                        Interlocked.Decrement(ref requestCount);
+                }
+
                 try
                 {
                     ProcessOrderEvents();
