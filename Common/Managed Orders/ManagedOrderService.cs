@@ -99,7 +99,14 @@ namespace QuantConnect.ManagedOrders
                 }
                 finally
                 {
-                    timer.Reset();
+                    try
+                    {
+                        timer.Reset();
+                    }
+                    finally
+                    {
+                        runMutex.ReleaseMutex();
+                    }
                 }
             }
         }
