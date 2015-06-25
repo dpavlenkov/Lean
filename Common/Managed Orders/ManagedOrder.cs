@@ -12,9 +12,12 @@ namespace QuantConnect.ManagedOrders
         Guid Id;
         Guid? AttachedToId;
 
+        IExecutionRouter ExecutionRouter;
         Guid[] OneCancelsAllGroupIds;
 
         Order UnderlyingOrder;
 
+        ManagedOrderState State;
+        ManagedOrderRequestState RequestState;
     }
 }

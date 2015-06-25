@@ -132,7 +132,14 @@
     <Compile Include="Data\Market\Splits.cs" />
     <Compile Include="Data\SubscriptionDataSource.cs" />
     <Compile Include="Field.cs" />
+    <Compile Include="Managed Orders\IExecutionRouter.cs" />
+    <Compile Include="Managed Orders\IManagedOrder.cs" />
+    <Compile Include="Managed Orders\IManagedOrderRequest.cs" />
+    <Compile Include="Managed Orders\IManagedOrderService.cs" />
     <Compile Include="Managed Orders\ManagedOrder.cs" />
+    <Compile Include="Managed Orders\ManagedOrderRequestState.cs" />
+    <Compile Include="Managed Orders\ManagedOrderService.cs" />
+    <Compile Include="Managed Orders\ManagedOrderState.cs" />
     <Compile Include="Market.cs" />
     <Compile Include="Notifications\Notification.cs" />
     <Compile Include="Notifications\NotificationManager.cs" />
