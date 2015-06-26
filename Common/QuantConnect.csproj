@@ -138,10 +138,13 @@
     <Compile Include="Managed Orders\IManagedOrderService.cs" />
     <Compile Include="Managed Orders\ManagedOrder.cs" />
     <Compile Include="Managed Orders\ManagedOrderBase.cs" />
+    <Compile Include="Managed Orders\ManagedOrderLimit.cs" />
+    <Compile Include="Managed Orders\ManagedOrderMarket.cs" />
     <Compile Include="Managed Orders\ManagedOrderRequestBase.cs" />
     <Compile Include="Managed Orders\ManagedOrderRequestState.cs" />
     <Compile Include="Managed Orders\ManagedOrderService.cs" />
     <Compile Include="Managed Orders\ManagedOrderState.cs" />
+    <Compile Include="Managed Orders\ManagedOrderStopMarket.cs" />
     <Compile Include="Managed Orders\ManagedOrderSubmitRequest.cs" />
     <Compile Include="Market.cs" />
     <Compile Include="Notifications\Notification.cs" />

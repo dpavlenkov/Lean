@@ -23,7 +23,25 @@ namespace QuantConnect.ManagedOrders
         public static bool IsOpen(this ManagedOrderState source)
         {
             return source == ManagedOrderState.New
-                || source == ManagedOrderState.PartiallyFilled
+                || source == ManagedOrderState.Submitted
+                || source == ManagedOrderState.Working;
+        }
+
+        public static bool IsFilled(this ManagedOrderState source)
+        {
+            return source == ManagedOrderState.Filled
+                || source == ManagedOrderState.PartiallyFilled;
+        }
+
+        public static bool IsCanceled(this ManagedOrderState source)
+        {
+            return source == ManagedOrderState.Canceled
+                || source == ManagedOrderState.Error;
+        }
+
+        public static bool AllowsCancel(this ManagedOrderState source)
+        {
+            return source == ManagedOrderState.New
                 || source == ManagedOrderState.Submitted
                 || source == ManagedOrderState.Working;
         }

@@ -9,9 +9,12 @@ namespace QuantConnect.ManagedOrders
 {
     public interface IManagedOrder
     {
+        Guid Id { get; }
         ManagedOrderState State { get; }
         ManagedOrderRequestState RequestState { get; }
-        Order UnderlyingOrder { get; }
+        string Symbol { get; }
+        string Tag { get; }
+        int UnderlyingOrderId { get; }
         IExecutionRouter ExecutionRouter { get; }
         Guid? AttachedToId { get; }
         Guid[] OCAGroups { get; }
@@ -21,5 +24,19 @@ namespace QuantConnect.ManagedOrders
         void JoinOCAGroup(Guid groupId);
         void LeaveOCAGroup(Guid groupId);
         void Process(OrderEvent orderEvent);
+    }
+
+    public static class ManagedOrderEx
+    {
+        public static bool AttachedOrdersNeedCancel(this IManagedOrder parentOrder)
+        {
+            return parentOrder.State.IsCanceled()
+                || parentOrder.RequestState == ManagedOrderRequestState.Canceling;
+        }
+
+        public static bool CanSubmit(this IManagedOrder managedOrder)
+        {
+            return managedOrder.State == ManagedOrderState.New;
+        }
     }
 }

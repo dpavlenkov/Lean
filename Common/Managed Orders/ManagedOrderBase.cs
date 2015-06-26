@@ -11,13 +11,41 @@ namespace QuantConnect.ManagedOrders
     {
         protected List<Guid> ocaGroups = new List<Guid>();
         protected OrderEvent currentOrderEvent;
+        protected Order underlyingOrder;
 
-        public ManagedOrderBase(IExecutionRouter router)
+        public ManagedOrderBase(IExecutionRouter router, string symbol, int quantity)
         {
+            this.Id = Guid.NewGuid();
+            this.Symbol = symbol;
+            this.Quantity = quantity;
             this.ExecutionRouter = router;
         }
 
         #region IManagedOrder Members
+
+        public Guid Id
+        {
+            get;
+            private set;
+        }
+
+        public string Symbol
+        {
+            get;
+            protected set;
+        }
+
+        public string Tag
+        {
+            get;
+            set;
+        }
+
+        public int Quantity
+        {
+            get;
+            protected set;
+        }
 
         public ManagedOrderState State
         {
@@ -31,7 +59,7 @@ namespace QuantConnect.ManagedOrders
             protected set;
         }
 
-        public Order UnderlyingOrder
+        public int UnderlyingOrderId
         {
             get;
             protected set;
@@ -56,25 +84,70 @@ namespace QuantConnect.ManagedOrders
 
         public void Submit()
         {
-            throw new NotImplementedException();
+            if(this.CanSubmit() == false) 
+                return;
+
+            try
+            {
+                UnderlyingOrderId = SubmitInternal();
+
+                if (UnderlyingOrderId > 0)
+                {
+                    State = ManagedOrderState.Submitted;
+                }
+                else
+                {
+                    State = ManagedOrderState.Error;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("{0}: {1}", ex.Message, ex.StackTrace);
+                State = ManagedOrderState.Error;
+            }
+        }
+
+        protected abstract int SubmitInternal();
+
+        protected void LogException(Exception ex)
+        {
+            Console.Error.WriteLine("{0} {1}", ex.Message, ex.StackTrace);
+        }
+
+        protected void LogStatus()
+        {
+            Console.WriteLine("{0} {4} {1} {2} {3}", Id, Tag, State, RequestState, UnderlyingOrderId);
         }
 
         public void Cancel()
         {
-            if (UnderlyingOrder != null
-                && UnderlyingOrder.Status.AllowsCancel()
-                && (currentOrderEvent == null || currentOrderEvent.Status.AllowsCancel()))
+            if (State.IsOpen() == true)
             {
-                RequestState = ManagedOrderRequestState.Canceling;
+                if (UnderlyingOrderId > 0)
+                {
+                    if (underlyingOrder != null
+                        && underlyingOrder.Status.AllowsCancel()
+                        && (currentOrderEvent == null || currentOrderEvent.Status.AllowsCancel()))
+                    {
+                        RequestState = ManagedOrderRequestState.Canceling;
 
-                try
-                {
-                    ExecutionRouter.Transactions.RemoveOrder(UnderlyingOrder.Id);
+                        try
+                        {
+                            ExecutionRouter.Transactions.RemoveOrder(underlyingOrder.Id);
+                            LogStatus();
+                            return;
+                        }
+                        catch (Exception ex)
+                        {
+                            LogException(ex);
+                        }
+                    }
                 }
-                catch (Exception ex)
-                {
-                    RequestState = ManagedOrderRequestState.None;
-                }
+
+                State = ManagedOrderState.Canceled;
+                RequestState = ManagedOrderRequestState.None;
+
+                LogStatus();
             }
         }
 
@@ -93,11 +166,19 @@ namespace QuantConnect.ManagedOrders
             ocaGroups.Remove(groupId);
         }
 
+        private void TryGetUnderlyingOrder()
+        {
+            if (underlyingOrder == null)
+                ExecutionRouter.Transactions.Orders.TryGetValue(UnderlyingOrderId, out underlyingOrder);
+        }
+
         public void Process(OrderEvent orderEvent)
         {
             currentOrderEvent = orderEvent;
 
-            if (State.IsOpen() == true)
+            TryGetUnderlyingOrder();
+
+            if (State.IsOpen() == false)
                 return;
 
             switch (orderEvent.Status)
@@ -105,15 +186,15 @@ namespace QuantConnect.ManagedOrders
                 case OrderStatus.Canceled:
                     State = ManagedOrderState.Canceled;
                     RequestState = ManagedOrderRequestState.None;
+
                     break;
                 case OrderStatus.Filled:
                     State = ManagedOrderState.Filled;
                     RequestState = ManagedOrderRequestState.None;
                     break;
                 case OrderStatus.PartiallyFilled:
-                    if(State == ManagedOrderState.Working || State == ManagedOrderState.Submitted)
-                        State = ManagedOrderState.PartiallyFilled;
-                        RequestState = ManagedOrderRequestState.None;
+                    State = ManagedOrderState.PartiallyFilled;
+                    RequestState = ManagedOrderRequestState.None;
                     break;
                 case OrderStatus.Submitted:
                     if(State == ManagedOrderState.Submitted)
@@ -128,6 +209,8 @@ namespace QuantConnect.ManagedOrders
                 default:
                     break;
             }
+
+            LogStatus();
         }
 
         #endregion
