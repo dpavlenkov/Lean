@@ -52,9 +52,9 @@ namespace QuantConnect.Algorithm.Examples
         {
             if (quantity > 0)
             {
-                var entryOrder = new ManagedOrderLimit(this, symbol, quantity, Math.Round(data.Low,2)) { Tag = "Low Entry" };
-                var slOrder = new ManagedOrderStopMarket(this, symbol, -quantity, Math.Round(data.Low + data.Low - data.High)) { Tag = "Low SL" };
-                var tpOrder = new ManagedOrderLimit(this, symbol, -quantity, Math.Round(data.High)) { Tag = "Low TP" };
+                var entryOrder = new ManagedOrderLimit(this, symbol, quantity, Math.Round(data.Low, 2)) { Tag = "Low Entry" };
+                var slOrder = new ManagedOrderStopMarket(this, symbol, -quantity, Math.Round(data.Low + data.Low - data.High, 2)) { Tag = "Low SL" };
+                var tpOrder = new ManagedOrderLimit(this, symbol, -quantity, Math.Round(data.High, 2)) { Tag = "Low TP" };
 
                 slOrder.AttachToId(entryOrder.Id);
                 tpOrder.AttachToId(entryOrder.Id);
@@ -62,15 +62,15 @@ namespace QuantConnect.Algorithm.Examples
                 slOrder.JoinOCAGroup(ocaGroupid);
                 tpOrder.JoinOCAGroup(ocaGroupid);
 
-                Log(string.Format("Bracket order Quantity {3} Entry {0} SL {1} TP {2}", entryOrder.LimitPrice, slOrder.StopPrice, tpOrder.LimitPrice, quantity));
+                Log(string.Format("Bracket order Quantity {3} Low Entry {0} SL {1} TP {2}", entryOrder.LimitPrice, slOrder.StopPrice, tpOrder.LimitPrice, quantity));
 
                 return new IManagedOrder[] { entryOrder, slOrder, tpOrder };
             }
             if (quantity < 0)
             {
-                var entryOrder = new ManagedOrderLimit(this, symbol, -quantity, Math.Round(data.High)) { Tag = "High Entry" };
-                var slOrder = new ManagedOrderStopMarket(this, symbol, quantity, Math.Round(data.High + data.High - data.Low)) { Tag = "High SL" };
-                var tpOrder = new ManagedOrderLimit(this, symbol, quantity, Math.Round(data.Low)) { Tag = "High TP" };
+                var entryOrder = new ManagedOrderLimit(this, symbol, quantity, Math.Round(data.High, 2)) { Tag = "High Entry" };
+                var slOrder = new ManagedOrderStopMarket(this, symbol, -quantity, Math.Round(data.High + data.High - data.Low, 2)) { Tag = "High SL" };
+                var tpOrder = new ManagedOrderLimit(this, symbol, -quantity, Math.Round(data.Low, 2)) { Tag = "High TP" };
 
                 slOrder.AttachToId(entryOrder.Id);
                 tpOrder.AttachToId(entryOrder.Id);
@@ -78,7 +78,7 @@ namespace QuantConnect.Algorithm.Examples
                 slOrder.JoinOCAGroup(ocaGroupid);
                 tpOrder.JoinOCAGroup(ocaGroupid);
 
-                Log(string.Format("Bracket order Quantity {3} Entry {0} SL {1} TP {2}", entryOrder.LimitPrice, slOrder.StopPrice, tpOrder.LimitPrice, quantity));
+                Log(string.Format("Bracket order Quantity {3} High Entry {0} SL {1} TP {2}", entryOrder.LimitPrice, slOrder.StopPrice, tpOrder.LimitPrice, quantity));
 
                 return new IManagedOrder[] { entryOrder, slOrder, tpOrder };
             }
