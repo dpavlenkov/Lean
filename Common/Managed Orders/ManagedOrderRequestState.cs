@@ -9,11 +9,8 @@ namespace QuantConnect.ManagedOrders
     public enum ManagedOrderRequestState
     {
         None,
-        SubmitRequested,
         Submitting,
-        AmendRequested,
         Amending,
-        CancelRequested,
         Canceling
     }
 }

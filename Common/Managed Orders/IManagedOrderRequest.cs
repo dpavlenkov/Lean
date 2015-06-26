@@ -8,5 +8,6 @@ namespace QuantConnect.ManagedOrders
 {
     public interface IManagedOrderRequest
     {
+        IManagedOrder ManagedOrder { get; }
     }
 }

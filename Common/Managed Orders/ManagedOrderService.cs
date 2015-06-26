@@ -17,6 +17,8 @@ namespace QuantConnect.ManagedOrders
         private ConcurrentQueue<IManagedOrderRequest> requestQueue;
         private ConcurrentQueue<Tuple<OrderEvent, IExecutionRouter>> orderEventQueue;
         private ConcurrentQueue<object> dataQueue;
+        private ConcurrentDictionary<Guid, HashSet<IManagedOrder>> attachedToLookup;
+        private ConcurrentDictionary<Guid, HashSet<IManagedOrder>> ocaGroupLookup;
 
         private int timerMilliseconds = 1000;
         private System.Timers.Timer timer;
@@ -29,6 +31,8 @@ namespace QuantConnect.ManagedOrders
             requestQueue = new ConcurrentQueue<IManagedOrderRequest>();
             dataQueue = new ConcurrentQueue<object>();
             orderEventQueue = new ConcurrentQueue<Tuple<OrderEvent, IExecutionRouter>>();
+            attachedToLookup = new ConcurrentDictionary<Guid, HashSet<IManagedOrder>>();
+            ocaGroupLookup = new ConcurrentDictionary<Guid, HashSet<IManagedOrder>>();
 
             ErrorMessages = new List<string>();
 
@@ -41,6 +45,19 @@ namespace QuantConnect.ManagedOrders
         {
             get;
             private set;
+        }
+
+        public void Submit(params IManagedOrder[] managedOrders)
+        {
+            foreach (var managedOrder in managedOrders)
+            {
+                TryAttachToId(managedOrder);
+                TryJoinOcaGroup(managedOrder);
+
+                requestQueue.Enqueue(new ManagedOrderSubmitRequest(managedOrder));
+            }
+
+            Run();
         }
 
         private void LogException(Exception ex)
@@ -126,6 +143,38 @@ namespace QuantConnect.ManagedOrders
 
         }
 
+        private void TryJoinOcaGroup(IManagedOrder managedOrder)
+        {
+            foreach (var groupId in managedOrder.OCAGroups)
+            {
+                HashSet<IManagedOrder> set;
+                if (ocaGroupLookup.TryGetValue(groupId, out set) == false)
+                {
+                    set = new HashSet<IManagedOrder>();
+                    ocaGroupLookup[groupId]=set;
+                }
+
+                set.Add(managedOrder);
+            }
+        }
+
+        private void TryAttachToId(IManagedOrder managedOrder)
+        {
+            if (managedOrder.AttachedToId.HasValue == false)
+                return;
+
+            var id = managedOrder.AttachedToId.Value;
+
+            HashSet<IManagedOrder> set;
+            if (attachedToLookup.TryGetValue(id, out set) == false)
+            {
+                set = new HashSet<IManagedOrder>();
+                attachedToLookup[id] = set;
+            }
+
+            set.Add(managedOrder);
+        }
+        
         private void OnOrderEvent(OrderEvent orderEvent, IExecutionRouter executionRouter)
         {
             orderEventQueue.Enqueue(new Tuple<OrderEvent, IExecutionRouter>(orderEvent, executionRouter));

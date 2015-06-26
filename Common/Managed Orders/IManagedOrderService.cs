@@ -12,5 +12,6 @@ namespace QuantConnect.ManagedOrders
     {
         void OnData(TradeBars data);
         void OnData(Ticks data);
+        void Submit(params IManagedOrder[] managedOrders);
     }
 }
