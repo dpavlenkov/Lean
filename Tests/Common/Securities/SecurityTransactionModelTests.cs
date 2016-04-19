@@ -20,7 +20,6 @@ using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 using QuantConnect.Orders;
 using QuantConnect.Securities;
-using QuantConnect.Securities.Equity;
 
 namespace QuantConnect.Tests.Common.Securities
 {
@@ -29,59 +28,55 @@ namespace QuantConnect.Tests.Common.Securities
     {
         private static readonly DateTime Noon = new DateTime(2014, 6, 24, 12, 0, 0);
         private static readonly TimeKeeper TimeKeeper = new TimeKeeper(Noon.ConvertToUtc(TimeZones.NewYork), new[] { TimeZones.NewYork });
-        private const string Symbol = "SPY";
 
         [Test]
         public void PerformsMarketFillBuy()
         {
             var model = new SecurityTransactionModel();
-            var order = new MarketOrder(Symbol, 100, Noon, type: SecurityType.Equity);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new MarketOrder(Symbols.SPY, 100, Noon, type: SecurityType.Equity);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 101.123m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 101.123m));
 
             var fill = model.MarketFill(security, order);
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(security.Price, fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
         [Test]
         public void PerformsMarketFillSell()
         {
             var model = new SecurityTransactionModel();
-            var order = new MarketOrder(Symbol, -100, Noon, type: SecurityType.Equity);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new MarketOrder(Symbols.SPY, -100, Noon, type: SecurityType.Equity);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 101.123m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 101.123m));
 
             var fill = model.MarketFill(security, order);
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(security.Price, fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsLimitFillBuy()
         {
             var model = new SecurityTransactionModel();
-            var order = new LimitOrder(Symbol, 100, 101.5m, Noon, type: SecurityType.Equity);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new LimitOrder(Symbols.SPY, 100, 101.5m, Noon, type: SecurityType.Equity);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 102m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 102m));
 
             var fill = model.LimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new TradeBar(Noon, Symbol, 102m, 103m, 101m, 102.3m, 100));
+            security.SetMarketPrice(new TradeBar(Noon, Symbols.SPY, 102m, 103m, 101m, 102.3m, 100));
 
             fill = model.LimitFill(security, order);
 
@@ -89,27 +84,25 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(Math.Min(order.LimitPrice, security.High), fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsLimitFillSell()
         {
             var model = new SecurityTransactionModel();
-            var order = new LimitOrder(Symbol, -100, 101.5m, Noon, type: SecurityType.Equity);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new LimitOrder(Symbols.SPY, -100, 101.5m, Noon, type: SecurityType.Equity);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 101m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 101m));
 
             var fill = model.LimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new TradeBar(Noon, Symbol, 102m, 103m, 101m, 102.3m, 100));
+            security.SetMarketPrice(new TradeBar(Noon, Symbols.SPY, 102m, 103m, 101m, 102.3m, 100));
 
             fill = model.LimitFill(security, order);
 
@@ -117,36 +110,33 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(Math.Max(order.LimitPrice, security.Low), fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsStopLimitFillBuy()
         {
             var model = new SecurityTransactionModel();
-            var order = new StopLimitOrder(Symbol, 100, 101.5m, 101.75m, Noon, type: SecurityType.Equity);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new StopLimitOrder(Symbols.SPY, 100, 101.5m, 101.75m, Noon, type: SecurityType.Equity);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 100m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 100m));
 
             var fill = model.StopLimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 102m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 102m));
 
             fill = model.StopLimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 101.66m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 101.66m));
 
             fill = model.StopLimitFill(security, order);
 
@@ -154,36 +144,33 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(order.LimitPrice, fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsStopLimitFillSell()
         {
             var model = new SecurityTransactionModel();
-            var order = new StopLimitOrder(Symbol, -100, 101.75m, 101.50m, Noon, type: SecurityType.Equity);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new StopLimitOrder(Symbols.SPY, -100, 101.75m, 101.50m, Noon, type: SecurityType.Equity);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 102m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 102m));
 
             var fill = model.StopLimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 101m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 101m));
 
             fill = model.StopLimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 101.66m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 101.66m));
 
             fill = model.StopLimitFill(security, order);
 
@@ -191,27 +178,25 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(order.LimitPrice, fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsStopMarketFillBuy()
         {
             var model = new SecurityTransactionModel();
-            var order = new StopMarketOrder(Symbol, 100, 101.5m, Noon, type: SecurityType.Equity);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new StopMarketOrder(Symbols.SPY, 100, 101.5m, Noon, type: SecurityType.Equity);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 101m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 101m));
 
             var fill = model.StopMarketFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 102.5m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 102.5m));
 
             fill = model.StopMarketFill(security, order);
 
@@ -219,27 +204,25 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(Math.Max(security.Price, order.StopPrice), fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsStopMarketFillSell()
         {
             var model = new SecurityTransactionModel();
-            var order = new StopMarketOrder(Symbol, -100, 101.5m, Noon, type: SecurityType.Equity);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new StopMarketOrder(Symbols.SPY, -100, 101.5m, Noon, type: SecurityType.Equity);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 102m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 102m));
 
             var fill = model.StopMarketFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, Noon, 101m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.SPY, Noon, 101m));
 
             fill = model.StopMarketFill(security, order);
 
@@ -247,7 +230,6 @@ namespace QuantConnect.Tests.Common.Securities
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(Math.Min(security.Price, order.StopPrice), fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
@@ -255,13 +237,13 @@ namespace QuantConnect.Tests.Common.Securities
         {
             var reference = new DateTime(2015, 06, 05, 9, 0, 0); // before market open
             var model = new SecurityTransactionModel();
-            var order = new MarketOnOpenOrder(Symbol, SecurityType.Equity, 100, reference);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new MarketOnOpenOrder(Symbols.SPY, SecurityType.Equity, 100, reference);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
             var time = reference;
             TimeKeeper.SetUtcDateTime(time.ConvertToUtc(TimeZones.NewYork));
-            security.SetMarketPrice(new TradeBar(time, Symbol, 1m, 2m, 0.5m, 1.33m, 100));
+            security.SetMarketPrice(new TradeBar(time, Symbols.SPY, 1m, 2m, 0.5m, 1.33m, 100));
 
             var fill = model.MarketOnOpenFill(security, order);
             Assert.AreEqual(0, fill.FillQuantity);
@@ -269,7 +251,7 @@ namespace QuantConnect.Tests.Common.Securities
             // market opens after 30min, so this is just before market open
             time = reference.AddMinutes(29);
             TimeKeeper.SetUtcDateTime(time.ConvertToUtc(TimeZones.NewYork));
-            security.SetMarketPrice(new TradeBar(time, Symbol, 1.33m, 2.75m, 1.15m, 1.45m, 100));
+            security.SetMarketPrice(new TradeBar(time, Symbols.SPY, 1.33m, 2.75m, 1.15m, 1.45m, 100));
 
             fill = model.MarketOnOpenFill(security, order);
             Assert.AreEqual(0, fill.FillQuantity);
@@ -277,7 +259,7 @@ namespace QuantConnect.Tests.Common.Securities
             // market opens after 30min
             time = reference.AddMinutes(30);
             TimeKeeper.SetUtcDateTime(time.ConvertToUtc(TimeZones.NewYork));
-            security.SetMarketPrice(new TradeBar(time, Symbol, 1.45m, 2.0m, 1.1m, 1.40m, 100));
+            security.SetMarketPrice(new TradeBar(time, Symbols.SPY, 1.45m, 2.0m, 1.1m, 1.40m, 100));
 
             fill = model.MarketOnOpenFill(security, order);
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
@@ -289,13 +271,13 @@ namespace QuantConnect.Tests.Common.Securities
         {
             var reference = new DateTime(2015, 06, 05, 15, 0, 0); // before market close
             var model = new SecurityTransactionModel();
-            var order = new MarketOnCloseOrder(Symbol, SecurityType.Equity, 100, reference);
-            var config = CreateTradeBarConfig(Symbol);
+            var order = new MarketOnCloseOrder(Symbols.SPY, SecurityType.Equity, 100, reference);
+            var config = CreateTradeBarConfig(Symbols.SPY);
             var security = new Security(SecurityExchangeHoursTests.CreateUsEquitySecurityExchangeHours(), config, 1);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
             var time = reference;
             TimeKeeper.SetUtcDateTime(time.ConvertToUtc(TimeZones.NewYork));
-            security.SetMarketPrice(new TradeBar(time, Symbol, 1m, 2m, 0.5m, 1.33m, 100));
+            security.SetMarketPrice(new TradeBar(time, Symbols.SPY, 1m, 2m, 0.5m, 1.33m, 100));
 
             var fill = model.MarketOnCloseFill(security, order);
             Assert.AreEqual(0, fill.FillQuantity);
@@ -303,7 +285,7 @@ namespace QuantConnect.Tests.Common.Securities
             // market closes after 60min, so this is just before market Close
             time = reference.AddMinutes(59);
             TimeKeeper.SetUtcDateTime(time.ConvertToUtc(TimeZones.NewYork));
-            security.SetMarketPrice(new TradeBar(time, Symbol, 1.33m, 2.75m, 1.15m, 1.45m, 100));
+            security.SetMarketPrice(new TradeBar(time, Symbols.SPY, 1.33m, 2.75m, 1.15m, 1.45m, 100));
 
             fill = model.MarketOnCloseFill(security, order);
             Assert.AreEqual(0, fill.FillQuantity);
@@ -311,16 +293,16 @@ namespace QuantConnect.Tests.Common.Securities
             // market closes
             time = reference.AddMinutes(60);
             TimeKeeper.SetUtcDateTime(time.ConvertToUtc(TimeZones.NewYork));
-            security.SetMarketPrice(new TradeBar(time, Symbol, 1.45m, 2.0m, 1.1m, 1.40m, 100));
+            security.SetMarketPrice(new TradeBar(time, Symbols.SPY, 1.45m, 2.0m, 1.1m, 1.40m, 100));
 
             fill = model.MarketOnCloseFill(security, order);
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(security.Close, fill.FillPrice);
         }
 
-        private SubscriptionDataConfig CreateTradeBarConfig(string symbol)
+        private SubscriptionDataConfig CreateTradeBarConfig(Symbol symbol)
         {
-            return new SubscriptionDataConfig(typeof(TradeBar), SecurityType.Equity, symbol, Resolution.Minute, "usa", TimeZones.NewYork, true, true, true, true, false, 0);
+            return new SubscriptionDataConfig(typeof(TradeBar), symbol, Resolution.Minute, TimeZones.NewYork, TimeZones.NewYork, true, true, false);
         }
     }
 }

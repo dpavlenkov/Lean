@@ -25,6 +25,7 @@ using QuantConnect.Lean.Engine.TransactionHandlers;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Packets;
+using QuantConnect.Statistics;
 
 namespace QuantConnect.Lean.Engine.Results
 {
@@ -43,6 +44,10 @@ namespace QuantConnect.Lean.Engine.Results
         private DateTime _nextSample;
         private readonly TimeSpan _resamplePeriod;
         private readonly TimeSpan _notificationPeriod;
+
+        /// <summary>
+        /// A dictionary containing summary statistics
+        /// </summary>
         public Dictionary<string, string> FinalStatistics { get; private set; } 
 
         /// <summary>
@@ -209,27 +214,27 @@ namespace QuantConnect.Lean.Engine.Results
         /// Add a sample to the chart specified by the chartName, and seriesName.
         /// </summary>
         /// <param name="chartName">String chart name to place the sample.</param>
-        /// <param name="chartType">Type of chart we should create if it doesn't already exist.</param>
+        /// <param name="seriesIndex">Type of chart we should create if it doesn't already exist.</param>
         /// <param name="seriesName">Series name for the chart.</param>
         /// <param name="seriesType">Series type for the chart.</param>
         /// <param name="time">Time for the sample</param>
         /// <param name="value">Value for the chart sample.</param>
         /// <param name="unit">Unit for the sample axis</param>
         /// <remarks>Sample can be used to create new charts or sample equity - daily performance.</remarks>
-        public void Sample(string chartName, ChartType chartType, string seriesName, SeriesType seriesType, DateTime time, decimal value, string unit = "$")
+        public void Sample(string chartName, string seriesName, int seriesIndex, SeriesType seriesType, DateTime time, decimal value, string unit = "$")
         {
             lock (_chartLock)
             {
                 //Add a copy locally:
                 if (!Charts.ContainsKey(chartName))
                 {
-                    Charts.AddOrUpdate<string, Chart>(chartName, new Chart(chartName, chartType));
+                    Charts.AddOrUpdate<string, Chart>(chartName, new Chart(chartName));
                 }
 
                 //Add the sample to our chart:
                 if (!Charts[chartName].Series.ContainsKey(seriesName))
                 {
-                    Charts[chartName].Series.Add(seriesName, new Series(seriesName, seriesType));
+                    Charts[chartName].Series.Add(seriesName, new Series(seriesName, seriesType, seriesIndex, unit));
                 }
 
                 //Add our value:
@@ -244,7 +249,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="value">Current equity value</param>
         public void SampleEquity(DateTime time, decimal value)
         {
-            Sample("Strategy Equity", ChartType.Stacked, "Equity", SeriesType.Candle, time, value);
+            Sample("Strategy Equity", "Equity", 0, SeriesType.Candle, time, value, "$");
         }
 
         /// <summary>
@@ -254,9 +259,19 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="value">Value of the daily performance.</param>
         public void SamplePerformance(DateTime time, decimal value)
         {
-            Sample("Strategy Equity", ChartType.Overlay, "Daily Performance", SeriesType.Line, time, value, "%");
+            Sample("Strategy Equity", "Daily Performance", 0, SeriesType.Line, time, value, "%");
         }
 
+        /// <summary>
+        /// Sample the current benchmark performance directly with a time-value pair.
+        /// </summary>
+        /// <param name="time">Current backtest date.</param>
+        /// <param name="value">Current benchmark value.</param>
+        /// <seealso cref="IResultHandler.Sample"/>
+        public void SampleBenchmark(DateTime time, decimal value)
+        {
+            Sample("Benchmark", "Benchmark", 0, SeriesType.Line, time, value);
+        }
 
         /// <summary>
         /// Analyse the algorithm and determine its security types.
@@ -270,11 +285,10 @@ namespace QuantConnect.Lean.Engine.Results
         /// <summary>
         /// Send an algorithm status update to the browser.
         /// </summary>
-        /// <param name="algorithmId">Algorithm id for the status update.</param>
         /// <param name="status">Status enum value.</param>
         /// <param name="message">Additional optional status message.</param>
         /// <remarks>In backtesting we do not send the algorithm status updates.</remarks>
-        public void SendStatusUpdate(string algorithmId, AlgorithmStatus status, string message = "")
+        public void SendStatusUpdate(AlgorithmStatus status, string message = "")
         {
             DebugMessage("DesktopResultHandler.SendStatusUpdate(): Algorithm Status: " + status + " : " + message);
         }
@@ -286,7 +300,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="symbol">Symbol we're sampling.</param>
         /// <param name="time">Time of sample</param>
         /// <param name="value">Value of the asset price</param>
-        public void SampleAssetPrices(string symbol, DateTime time, decimal value)
+        public void SampleAssetPrices(Symbol symbol, DateTime time, decimal value)
         { 
             //NOP. Don't sample asset prices in console.
         }
@@ -332,20 +346,20 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="orders">Collection of orders from the algorithm</param>
         /// <param name="profitLoss">Collection of time-profit values for the algorithm</param>
         /// <param name="holdings">Current holdings state for the algorithm</param>
-        /// <param name="statistics">Statistics information for the algorithm (empty if not finished)</param>
+        /// <param name="statisticsResults">Statistics information for the algorithm (empty if not finished)</param>
         /// <param name="banner">Runtime statistics banner information</param>
-        public void SendFinalResult(AlgorithmNodePacket job, Dictionary<int, Order> orders, Dictionary<DateTime, decimal> profitLoss, Dictionary<string, Holding> holdings, Dictionary<string, string> statistics, Dictionary<string, string> banner)
+        public void SendFinalResult(AlgorithmNodePacket job, Dictionary<int, Order> orders, Dictionary<DateTime, decimal> profitLoss, Dictionary<string, Holding> holdings, StatisticsResults statisticsResults, Dictionary<string, string> banner)
         {
             // uncomment these code traces to help write regression tests
             //Log.Trace("var statistics = new Dictionary<string, string>();");
             
             // Bleh. Nicely format statistical analysis on your algorithm results. Save to file etc.
-            foreach (var pair in statistics) 
+            foreach (var pair in statisticsResults.Summary) 
             {
                 DebugMessage("STATISTICS:: " + pair.Key + " " + pair.Value);
             }
 
-            FinalStatistics = statistics;
+            FinalStatistics = statisticsResults.Summary;
         }
 
         /// <summary>

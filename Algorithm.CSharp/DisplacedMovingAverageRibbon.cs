@@ -19,7 +19,6 @@ using System.Linq;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 
-
 namespace QuantConnect.Algorithm.Examples
 {
     /// <summary>
@@ -81,7 +80,7 @@ namespace QuantConnect.Algorithm.Examples
             if (!_ribbon.All(x => x.IsReady)) return;
 
             // only once per day
-            if (_previous.Date == data.Time.Date) return;
+            if (_previous.Date == Time.Date) return;
 
             Plot(Symbol, "Price", data[Symbol].Price);
             Plot(Symbol, _ribbon);
@@ -100,7 +99,7 @@ namespace QuantConnect.Algorithm.Examples
                 Liquidate(Symbol);
             }
 
-            _previous = data.Time;
+            _previous = Time;
         }
 
         /// <summary>

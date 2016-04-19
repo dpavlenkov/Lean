@@ -37,12 +37,12 @@ namespace QuantConnect.Orders
         /// <summary>
         /// Brokerage Id for this order for when the brokerage splits orders into multiple pieces
         /// </summary>
-        public List<long> BrokerId { get; internal set; }
+        public List<string> BrokerId { get; internal set; }
 
         /// <summary>
         /// Symbol of the Asset
         /// </summary>
-        public string Symbol { get; internal set; }
+        public Symbol Symbol { get; internal set; }
         
         /// <summary>
         /// Price of the Order.
@@ -112,12 +112,12 @@ namespace QuantConnect.Orders
         }
 
         /// <summary>
-        /// Value of the order at limit price if a limit order, or market price if a market order.
+        /// Gets the executed value of this order. If the order has not yet filled,
+        /// then this will return zero.
         /// </summary>
-        [Obsolete("Value property has been made obsolete. Use GetValue(currentMarketPrice) instead.")]
-        public abstract decimal Value 
-        { 
-            get; 
+        public decimal Value
+        {
+            get { return Quantity*Price; }
         }
 
         /// <summary>
@@ -128,13 +128,14 @@ namespace QuantConnect.Orders
             Time = new DateTime();
             Price = 0;
             Quantity = 0;
-            Symbol = "";
+            Symbol = Symbol.Empty;
             Status = OrderStatus.None;
             Tag = "";
             SecurityType = SecurityType.Base;
             Duration = OrderDuration.GTC;
-            BrokerId = new List<long>();
+            BrokerId = new List<string>();
             ContingentId = 0;
+            DurationValue = DateTime.MaxValue;
         }
 
         /// <summary>
@@ -145,7 +146,7 @@ namespace QuantConnect.Orders
         /// <param name="quantity">Quantity of the asset we're seeking to trade</param>
         /// <param name="time">Time the order was placed</param>
         /// <param name="tag">User defined data tag for this order</param>
-        protected Order(string symbol, int quantity, DateTime time, string tag = "", SecurityType type = SecurityType.Base)
+        protected Order(Symbol symbol, int quantity, DateTime time, string tag = "", SecurityType type = SecurityType.Base)
         {
             Time = time;
             Price = 0;
@@ -155,8 +156,9 @@ namespace QuantConnect.Orders
             Tag = tag;
             SecurityType = type;
             Duration = OrderDuration.GTC;
-            BrokerId = new List<long>();
+            BrokerId = new List<string>();
             ContingentId = 0;
+            DurationValue = DateTime.MaxValue;
         }
 
         /// <summary>
@@ -167,7 +169,7 @@ namespace QuantConnect.Orders
         /// <param name="quantity">Quantity of the asset we're seeking to trade</param>
         /// <param name="time">Time the order was placed</param>
         /// <param name="tag">User defined data tag for this order</param>
-        protected Order(string symbol, SecurityType type, int quantity, DateTime time, string tag = "") 
+        protected Order(Symbol symbol, SecurityType type, int quantity, DateTime time, string tag = "") 
         {
             Time = time;
             Price = 0;
@@ -177,8 +179,9 @@ namespace QuantConnect.Orders
             Tag = tag;
             SecurityType = type;
             Duration = OrderDuration.GTC;
-            BrokerId = new List<long>();
+            BrokerId = new List<string>();
             ContingentId = 0;
+            DurationValue = DateTime.MaxValue;
         }
 
         /// <summary>
@@ -257,22 +260,22 @@ namespace QuantConnect.Orders
             switch (request.OrderType)
             {
                 case OrderType.Market:
-                    order =  new MarketOrder(request.Symbol, request.Quantity, request.Time, request.Tag, request.SecurityType);
+                    order = new MarketOrder(request.Symbol, request.Quantity, request.Time, request.Tag, request.SecurityType);
                     break;
                 case OrderType.Limit:
-                    order =  new LimitOrder(request.Symbol, request.Quantity, request.LimitPrice, request.Time, request.Tag, request.SecurityType);
+                    order = new LimitOrder(request.Symbol, request.Quantity, request.LimitPrice, request.Time, request.Tag, request.SecurityType);
                     break;
                 case OrderType.StopMarket:
-                    order =  new StopMarketOrder(request.Symbol, request.Quantity, request.StopPrice, request.Time, request.Tag, request.SecurityType);
+                    order = new StopMarketOrder(request.Symbol, request.Quantity, request.StopPrice, request.Time, request.Tag, request.SecurityType);
                     break;
                 case OrderType.StopLimit:
-                    order =  new StopLimitOrder(request.Symbol, request.Quantity, request.StopPrice, request.LimitPrice, request.Time, request.Tag, request.SecurityType);
+                    order = new StopLimitOrder(request.Symbol, request.Quantity, request.StopPrice, request.LimitPrice, request.Time, request.Tag, request.SecurityType);
                     break;
                 case OrderType.MarketOnOpen:
-                    order =  new MarketOnOpenOrder(request.Symbol, request.SecurityType, request.Quantity, request.Time, request.Tag);
+                    order = new MarketOnOpenOrder(request.Symbol, request.SecurityType, request.Quantity, request.Time, request.Tag);
                     break;
                 case OrderType.MarketOnClose:
-                    order =  new MarketOnCloseOrder(request.Symbol, request.SecurityType, request.Quantity, request.Time, request.Tag);
+                    order = new MarketOnCloseOrder(request.Symbol, request.SecurityType, request.Quantity, request.Time, request.Tag);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -285,5 +288,9 @@ namespace QuantConnect.Orders
             }
             return order;
         }
+        /// <summary>
+        /// Order Expiry on a specific UTC time.
+        /// </summary>
+        public DateTime DurationValue;
     }
 }

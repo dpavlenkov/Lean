@@ -48,6 +48,20 @@ namespace QuantConnect.Brokerages
         }
 
         /// <summary>
+        /// Returns true if the brokerage would allow updating the order as specified by the request
+        /// </summary>
+        /// <param name="security">The security of the order</param>
+        /// <param name="order">The order to be updated</param>
+        /// <param name="request">The requested update to be made to the order</param>
+        /// <param name="message">If this function returns false, a brokerage message detailing why the order may not be updated</param>
+        /// <returns>True if the brokerage would allow updating the order, false otherwise</returns>
+        public virtual bool CanUpdateOrder(Security security, Order order, UpdateOrderRequest request, out BrokerageMessageEvent message)
+        {
+            message = null;
+            return true;
+        }
+
+        /// <summary>
         /// Returns true if the brokerage would be able to execute this order at this time assuming
         /// market prices are sufficient for the fill to take place. This is used to emulate the 
         /// brokerage fills in backtesting and paper trading. For example some brokerages may not perform
@@ -107,5 +121,20 @@ namespace QuantConnect.Brokerages
                     throw new ArgumentOutOfRangeException("securityType", security.Type, null);
             }
         }
+
+        /// <summary>
+        /// Gets a new settlement model for the security
+        /// </summary>
+        /// <param name="security">The security to get a settlement model for</param>
+        /// <param name="accountType">The account type</param>
+        /// <returns>The settlement model for this brokerage</returns>
+        public virtual ISettlementModel GetSettlementModel(Security security, AccountType accountType)
+        {
+            if (security.Type == SecurityType.Equity && accountType == AccountType.Cash)
+                return new DelayedSettlementModel(Equity.DefaultSettlementDays, Equity.DefaultSettlementTime);
+            
+            return new ImmediateSettlementModel();
+        }
+
     }
 }

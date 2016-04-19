@@ -1,8 +1,25 @@
+/*
+ * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
+ * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); 
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
 using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using NUnit.Framework;
+using QuantConnect.Data;
+using QuantConnect.Data.Market;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
@@ -17,21 +34,21 @@ namespace QuantConnect.Tests.Brokerages
 
         private IBrokerage _brokerage;
         private OrderProvider _orderProvider;
-        private HoldingsProvider _holdingsProvider;
+        private SecurityProvider _securityProvider;
 
         /// <summary>
         /// Provides the data required to test each order type in various cases
         /// </summary>
-        public TestCaseData[] OrderParameters
+        public virtual TestCaseData[] OrderParameters
         {
             get
             {
                 return new []
                 {
-                    new TestCaseData(new MarketOrderTestParameters(Symbol, SecurityType)).SetName("MarketOrder"),
-                    new TestCaseData(new LimitOrderTestParameters(Symbol, SecurityType, HighPrice, LowPrice)).SetName("LimitOrder"),
-                    new TestCaseData(new StopMarketOrderTestParameters(Symbol, SecurityType, HighPrice, LowPrice)).SetName("StopMarketOrder"),
-                    new TestCaseData(new StopLimitOrderTestParameters(Symbol, SecurityType, HighPrice, LowPrice)).SetName("StopLimitOrder")
+                    new TestCaseData(new MarketOrderTestParameters(Symbol)).SetName("MarketOrder"),
+                    new TestCaseData(new LimitOrderTestParameters(Symbol, HighPrice, LowPrice)).SetName("LimitOrder"),
+                    new TestCaseData(new StopMarketOrderTestParameters(Symbol, HighPrice, LowPrice)).SetName("StopMarketOrder"),
+                    new TestCaseData(new StopLimitOrderTestParameters(Symbol, HighPrice, LowPrice)).SetName("StopLimitOrder")
                 };
             }
         }
@@ -49,7 +66,7 @@ namespace QuantConnect.Tests.Brokerages
             // we want to regenerate these for each test
             _brokerage = null;
             _orderProvider = null;
-            _holdingsProvider = null;
+            _securityProvider = null;
             Thread.Sleep(1000);
             CancelOpenOrders();
             LiquidateHoldings();
@@ -98,7 +115,7 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("- INITIALIZING BROKERAGE -");
             Log.Trace("");
 
-            var brokerage = CreateBrokerage(OrderProvider, HoldingsProvider);
+            var brokerage = CreateBrokerage(OrderProvider, SecurityProvider);
             brokerage.Connect();
 
             if (!brokerage.IsConnected)
@@ -119,7 +136,10 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("");
             foreach (var accountHolding in brokerage.GetAccountHoldings())
             {
-                HoldingsProvider[accountHolding.Symbol] = accountHolding;
+                // these securities don't need to be real, just used for the ISecurityProvider impl, required
+                // by brokerages to track holdings
+                SecurityProvider[accountHolding.Symbol] = new Security(SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork),
+                    new SubscriptionDataConfig(typeof (TradeBar), accountHolding.Symbol, Resolution.Minute, TimeZones.NewYork, TimeZones.NewYork, false, false, false), 1);
             }
             brokerage.OrderStatusChanged += (sender, args) =>
             {
@@ -130,27 +150,30 @@ namespace QuantConnect.Tests.Brokerages
                 // we need to keep this maintained properly
                 if (args.Status == OrderStatus.Filled || args.Status == OrderStatus.PartiallyFilled)
                 {
-                    Log.Trace("FILL EVENT: " + args.FillQuantity + " units of " + args.Symbol);
+                    Log.Trace("FILL EVENT: " + args.FillQuantity + " units of " + args.Symbol.ToString());
 
-                    Holding holding;
-                    if (_holdingsProvider.TryGetValue(args.Symbol, out holding))
+                    Security security;
+                    if (_securityProvider.TryGetValue(args.Symbol, out security))
                     {
-                        _holdingsProvider[args.Symbol].Quantity += args.FillQuantity;
+                        var holding = _securityProvider[args.Symbol].Holdings;
+                        holding.SetHoldings(args.FillPrice, holding.Quantity + args.FillQuantity);
                     }
                     else
                     {
                         var accountHoldings = brokerage.GetAccountHoldings().ToDictionary(x => x.Symbol);
                         if (accountHoldings.ContainsKey(args.Symbol))
                         {
-                            _holdingsProvider[args.Symbol] = accountHoldings[args.Symbol];
+                            _securityProvider[args.Symbol].Holdings.SetHoldings(args.FillPrice, args.FillQuantity);
                         }
                         else
                         {
-                            _holdingsProvider[args.Symbol] = new Holding {Symbol = args.Symbol};
+                            _securityProvider[args.Symbol] = new Security(SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork),
+                                new SubscriptionDataConfig(typeof (TradeBar), args.Symbol, Resolution.Minute, TimeZones.NewYork, TimeZones.NewYork, false, false, false), 1);
+                            _securityProvider[args.Symbol].Holdings.SetHoldings(args.FillPrice, args.FillQuantity);
                         }
                     }
 
-                    Log.Trace("--HOLDINGS: " + _holdingsProvider[args.Symbol]);
+                    Log.Trace("--HOLDINGS: " + _securityProvider[args.Symbol]);
 
                     // update order mapping
                     var order = _orderProvider.GetOrderById(args.OrderId);
@@ -165,16 +188,16 @@ namespace QuantConnect.Tests.Brokerages
             get { return _orderProvider ?? (_orderProvider = new OrderProvider()); }
         }
 
-        public HoldingsProvider HoldingsProvider
+        public SecurityProvider SecurityProvider
         {
-            get { return _holdingsProvider ?? (_holdingsProvider = new HoldingsProvider()); }
+            get { return _securityProvider ?? (_securityProvider = new SecurityProvider()); }
         }
 
         /// <summary>
         /// Creates the brokerage under test and connects it
         /// </summary>
         /// <returns>A connected brokerage instance</returns>
-        protected abstract IBrokerage CreateBrokerage(IOrderProvider orderProvider, IHoldingsProvider holdingsProvider);
+        protected abstract IBrokerage CreateBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider);
 
         /// <summary>
         /// Disposes of the brokerage and any external resources started in order to create it
@@ -194,10 +217,10 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("");
 
             var holdings = Brokerage.GetAccountHoldings();
+
             foreach (var holding in holdings)
             {
                 if (holding.Quantity == 0) continue;
-
                 Log.Trace("Liquidating: " + holding);
                 var order = new MarketOrder(holding.Symbol, (int)-holding.Quantity, DateTime.Now, type: holding.Type);
                 _orderProvider.Add(order);
@@ -223,7 +246,7 @@ namespace QuantConnect.Tests.Brokerages
         /// <summary>
         /// Gets the symbol to be traded, must be shortable
         /// </summary>
-        protected abstract string Symbol { get; }
+        protected abstract Symbol Symbol { get; }
 
         /// <summary>
         /// Gets the security type associated with the <see cref="Symbol"/>
@@ -243,7 +266,15 @@ namespace QuantConnect.Tests.Brokerages
         /// <summary>
         /// Gets the current market price of the specified security
         /// </summary>
-        protected abstract decimal GetAskPrice(string symbol, SecurityType securityType);
+        protected abstract decimal GetAskPrice(Symbol symbol);
+
+        /// <summary>
+        /// Gets the default order quantity
+        /// </summary>
+        protected virtual int GetDefaultQuantity()
+        {
+            return 1; 
+        }
 
         [Test]
         public void IsConnected()
@@ -257,7 +288,7 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("");
             Log.Trace("LONG FROM ZERO");
             Log.Trace("");
-            PlaceOrderWaitForStatus(parameters.CreateLongOrder(1), parameters.ExpectedStatus);
+            PlaceOrderWaitForStatus(parameters.CreateLongOrder(GetDefaultQuantity()), parameters.ExpectedStatus);
         }
 
         [Test, TestCaseSource("OrderParameters")]
@@ -267,10 +298,10 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("CLOSE FROM LONG");
             Log.Trace("");
             // first go long
-            PlaceOrderWaitForStatus(parameters.CreateLongMarketOrder(1), OrderStatus.Filled);
+            PlaceOrderWaitForStatus(parameters.CreateLongMarketOrder(GetDefaultQuantity()), OrderStatus.Filled);
 
             // now close it
-            PlaceOrderWaitForStatus(parameters.CreateShortOrder(1), parameters.ExpectedStatus);
+            PlaceOrderWaitForStatus(parameters.CreateShortOrder(GetDefaultQuantity()), parameters.ExpectedStatus);
         }
 
         [Test, TestCaseSource("OrderParameters")]
@@ -279,7 +310,7 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("");
             Log.Trace("SHORT FROM ZERO");
             Log.Trace("");
-            PlaceOrderWaitForStatus(parameters.CreateShortOrder(1), parameters.ExpectedStatus);
+            PlaceOrderWaitForStatus(parameters.CreateShortOrder(GetDefaultQuantity()), parameters.ExpectedStatus);
         }
 
         [Test, TestCaseSource("OrderParameters")]
@@ -289,10 +320,10 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("CLOSE FROM SHORT");
             Log.Trace("");
             // first go short
-            PlaceOrderWaitForStatus(parameters.CreateShortMarketOrder(1), OrderStatus.Filled);
+            PlaceOrderWaitForStatus(parameters.CreateShortMarketOrder(GetDefaultQuantity()), OrderStatus.Filled);
 
             // now close it
-            PlaceOrderWaitForStatus(parameters.CreateLongOrder(1), parameters.ExpectedStatus);
+            PlaceOrderWaitForStatus(parameters.CreateLongOrder(GetDefaultQuantity()), parameters.ExpectedStatus);
         }
 
         [Test, TestCaseSource("OrderParameters")]
@@ -302,10 +333,10 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("SHORT FROM LONG");
             Log.Trace("");
             // first go long
-            PlaceOrderWaitForStatus(parameters.CreateLongMarketOrder(1));
+            PlaceOrderWaitForStatus(parameters.CreateLongMarketOrder(GetDefaultQuantity()));
 
             // now go net short
-            var order = PlaceOrderWaitForStatus(parameters.CreateShortOrder(2), parameters.ExpectedStatus);
+            var order = PlaceOrderWaitForStatus(parameters.CreateShortOrder(2 * GetDefaultQuantity()), parameters.ExpectedStatus);
 
             if (parameters.ModifyUntilFilled)
             {
@@ -320,10 +351,10 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("LONG FROM SHORT");
             Log.Trace("");
             // first fo short
-            PlaceOrderWaitForStatus(parameters.CreateShortMarketOrder(-1), OrderStatus.Filled);
+            PlaceOrderWaitForStatus(parameters.CreateShortMarketOrder(-GetDefaultQuantity()), OrderStatus.Filled);
 
             // now go long
-            var order = PlaceOrderWaitForStatus(parameters.CreateLongOrder(2), parameters.ExpectedStatus);
+            var order = PlaceOrderWaitForStatus(parameters.CreateLongOrder(2 * GetDefaultQuantity()), parameters.ExpectedStatus);
 
             if (parameters.ModifyUntilFilled)
             {
@@ -349,7 +380,7 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("");
             var before = Brokerage.GetAccountHoldings();
 
-            PlaceOrderWaitForStatus(new MarketOrder(Symbol, 1, DateTime.Now, type: SecurityType));
+            PlaceOrderWaitForStatus(new MarketOrder(Symbol, GetDefaultQuantity(), DateTime.Now, type: SecurityType));
 
             var after = Brokerage.GetAccountHoldings();
 
@@ -359,7 +390,44 @@ namespace QuantConnect.Tests.Brokerages
             var beforeQuantity = beforeHoldings == null ? 0 : beforeHoldings.Quantity;
             var afterQuantity = afterHoldings == null ? 0 : afterHoldings.Quantity;
 
-            Assert.AreEqual(1, afterQuantity - beforeQuantity);
+            Assert.AreEqual(GetDefaultQuantity(), afterQuantity - beforeQuantity);
+        }
+
+        [Test, Ignore("This test requires reading the output and selection of a low volume security for the Brokerageage")]
+        public void PartialFills()
+        {
+            bool orderFilled = false;
+            var manualResetEvent = new ManualResetEvent(false);
+
+            var qty = 1000000;
+            var remaining = qty;
+            var sync = new object();
+            Brokerage.OrderStatusChanged += (sender, orderEvent) =>
+            {
+                lock (sync)
+                {
+                    remaining -= orderEvent.FillQuantity;
+                    Console.WriteLine("Remaining: " + remaining + " FillQuantity: " + orderEvent.FillQuantity);
+                    if (orderEvent.Status == OrderStatus.Filled)
+                    {
+                        orderFilled = true;
+                        manualResetEvent.Set();
+                    }
+                }
+            };
+
+            // pick a security with low, but some, volume
+            var symbol = Symbols.EURUSD;
+            var order = new MarketOrder(symbol, qty, DateTime.UtcNow, type: symbol.ID.SecurityType) { Id = 1 };
+            Brokerage.PlaceOrder(order);
+
+            // pause for a while to wait for fills to come in
+            manualResetEvent.WaitOne(2500);
+            manualResetEvent.WaitOne(2500);
+            manualResetEvent.WaitOne(2500);
+
+            Console.WriteLine("Remaining: " + remaining);
+            Assert.AreEqual(0, remaining);
         }
 
         /// <summary>
@@ -395,16 +463,19 @@ namespace QuantConnect.Tests.Brokerages
             Log.Trace("MODIFY UNTIL FILLED: " + order);
             Log.Trace("");
             var stopwatch = Stopwatch.StartNew();
-            while (!filledResetEvent.WaitOne(1000) && stopwatch.Elapsed.TotalSeconds < secondsTimeout)
+            while (!filledResetEvent.WaitOne(3000) && stopwatch.Elapsed.TotalSeconds < secondsTimeout)
             {
                 filledResetEvent.Reset();
                 if (order.Status == OrderStatus.PartiallyFilled) continue;
 
-                var marketPrice = GetAskPrice(order.Symbol, order.SecurityType);
+                var marketPrice = GetAskPrice(order.Symbol);
                 Log.Trace("BrokerageTests.ModifyOrderUntilFilled(): Ask: " + marketPrice);
-                var updateOrder = parameters.ModifyOrderToFill(order, marketPrice);
+
+                var updateOrder = parameters.ModifyOrderToFill(Brokerage, order, marketPrice);
                 if (updateOrder)
                 {
+                    if (order.Status == OrderStatus.Filled) break;
+
                     Log.Trace("BrokerageTests.ModifyOrderUntilFilled(): " + order);
                     if (!Brokerage.UpdateOrder(order))
                     {

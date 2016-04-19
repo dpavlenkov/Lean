@@ -27,6 +27,7 @@ using QuantConnect.Lean.Engine.TransactionHandlers;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Packets;
+using QuantConnect.Statistics;
 using QuantConnect.Util;
 
 namespace QuantConnect.Lean.Engine.Results
@@ -178,9 +179,9 @@ namespace QuantConnect.Lean.Engine.Results
             _startTime = DateTime.Now;
 
             //Default charts:
-            Charts.AddOrUpdate("Strategy Equity", new Chart("Strategy Equity", ChartType.Stacked));
-            Charts["Strategy Equity"].Series.Add("Equity", new Series("Equity", SeriesType.Candle));
-            Charts["Strategy Equity"].Series.Add("Daily Performance", new Series("Daily Performance", SeriesType.Bar, "%"));
+            Charts.AddOrUpdate("Strategy Equity", new Chart("Strategy Equity"));
+            Charts["Strategy Equity"].Series.Add("Equity", new Series("Equity", SeriesType.Candle, 0, "$"));
+            Charts["Strategy Equity"].Series.Add("Daily Performance", new Series("Daily Performance", SeriesType.Bar, 1, "%"));
         }
 
         /// <summary>
@@ -222,63 +223,73 @@ namespace QuantConnect.Lean.Engine.Results
             //SampleEquity(job.periodStart, job.startingCapital);
             //SamplePerformance(job.periodStart, 0);
 
-            while (!(_exitTriggered && Messages.Count == 0))
+            try
             {
-                //While there's no work to do, go back to the algorithm:
-                if (Messages.Count == 0)
+                while (!(_exitTriggered && Messages.Count == 0))
                 {
-                    Thread.Sleep(50);
-                }
-                else
-                {
-                    //1. Process Simple Messages in Queue
-                    Packet packet;
-                    if (Messages.TryDequeue(out packet))
+                    //While there's no work to do, go back to the algorithm:
+                    if (Messages.Count == 0)
                     {
-                        switch (packet.Type)
+                        Thread.Sleep(50);
+                    }
+                    else
+                    {
+                        //1. Process Simple Messages in Queue
+                        Packet packet;
+                        if (Messages.TryDequeue(out packet))
                         {
-                            //New Debug Message:
-                            case PacketType.Debug:
-                                var debug = packet as DebugPacket;
-                                if (lastMessage != debug.Message)
-                                {
-                                    //Log.Trace("BacktestingResultHandlerRun(): Debug Packet: " + debug.Message);
-                                    _messagingHandler.DebugMessage(debug.Message, debug.ProjectId, _backtestId, _compileId);
-                                    lastMessage = debug.Message;
-                                }
-                                break;
+                            switch (packet.Type)
+                            {
+                                //New Debug Message:
+                                case PacketType.Debug:
+                                    var debug = packet as DebugPacket;
+                                    if (lastMessage != debug.Message)
+                                    {
+                                        //Log.Trace("BacktestingResultHandlerRun(): Debug Packet: " + debug.Message);
+                                        _messagingHandler.DebugMessage(debug.Message, debug.ProjectId, _backtestId, _compileId);
+                                        lastMessage = debug.Message;
+                                    }
+                                    break;
 
-                            //Send log messages to the browser as well for live trading:
-                            case PacketType.SecurityTypes:
-                                var securityPacket = packet as SecurityTypesPacket;
-                                _messagingHandler.SecurityTypes(securityPacket);
-                                break;
+                                //Send log messages to the browser as well for live trading:
+                                case PacketType.SecurityTypes:
+                                    var securityPacket = packet as SecurityTypesPacket;
+                                    _messagingHandler.SecurityTypes(securityPacket);
+                                    break;
 
-                            case PacketType.RuntimeError:
-                                //Log.Error("QC.AlgorithmWorker.Run(): " + packet.Message);
-                                var runtime = packet as RuntimeErrorPacket;
-                                _messagingHandler.RuntimeError(_backtestId, runtime.Message, runtime.StackTrace);
-                                break;
+                                case PacketType.RuntimeError:
+                                    //Log.Error("QC.AlgorithmWorker.Run(): " + packet.Message);
+                                    var runtime = packet as RuntimeErrorPacket;
+                                    _messagingHandler.RuntimeError(_backtestId, runtime.Message, runtime.StackTrace);
+                                    break;
 
-                            case PacketType.HandledError:
-                                var handled = packet as HandledErrorPacket;
-                                Log.Error("BacktestingResultHandler.Run(): HandledError Packet: " + handled.Message);
-                                _messagingHandler.Send(handled);
-                                break;
+                                case PacketType.HandledError:
+                                    var handled = packet as HandledErrorPacket;
+                                    Log.Error("BacktestingResultHandler.Run(): HandledError Packet: " + handled.Message);
+                                    _messagingHandler.Send(handled);
+                                    break;
 
-                            default:
-                                //Default case..
-                                _messagingHandler.Send(packet);
-                                Log.Trace("BacktestingResultHandler.Run(): Default packet type: " + packet.Type);
-                                break;
+                                default:
+                                    //Default case..
+                                    _messagingHandler.Send(packet);
+                                    Log.Trace("BacktestingResultHandler.Run(): Default packet type: " + packet.Type);
+                                    break;
+                            }
                         }
                     }
-                }
 
-                //2. Update the packet scanner:
-                Update();
+                    //2. Update the packet scanner:
+                    Update();
 
-            } // While !End.
+                } // While !End.
+            }
+            catch (Exception err)
+            {
+                // unexpected error, we need to close down shop
+                Log.Error(err);
+                // quit the algorithm due to error
+                _algorithm.RunTimeError = err;
+            }
 
             Log.Trace("BacktestingResultHandler.Run(): Ending Thread...");
             _isActive = false;
@@ -308,9 +319,9 @@ namespace QuantConnect.Lean.Engine.Results
                         where order.Value.Time.Date >= _lastUpdate && order.Value.Status == OrderStatus.Filled
                         select order).ToDictionary(t => t.Key, t => t.Value);
                 }
-                catch (Exception err) 
+                catch (Exception err)
                 {
-                    Log.Error("BacktestingResultHandler().Update(): Transactions: " + err.Message);
+                    Log.Error(err, "Transactions");
                 }
 
                 //Limit length of orders we pass back dynamically to avoid flooding.
@@ -323,9 +334,9 @@ namespace QuantConnect.Lean.Engine.Results
                     _lastDaysProcessed = _daysProcessed;
                     _nextUpdate = DateTime.Now.AddSeconds(0.5);
                 }
-                catch (Exception err) 
+                catch (Exception err)
                 {
-                    Log.Error("BacktestingResultHandler.Update(): Can't update variables: " + err.Message);
+                    Log.Error(err, "Can't update variables");
                 }
 
                 var deltaCharts = new Dictionary<string, Chart>();
@@ -343,7 +354,7 @@ namespace QuantConnect.Lean.Engine.Results
                 if (progress > 0.999m) progress = 0.999m;
 
                 //1. Cloud Upload -> Upload the whole packet to S3  Immediately:
-                var completeResult = new BacktestResult(Charts, _transactionHandler.Orders, Algorithm.Transactions.TransactionRecord, new Dictionary<string, string>());
+                var completeResult = new BacktestResult(Charts, _transactionHandler.Orders, Algorithm.Transactions.TransactionRecord, new Dictionary<string, string>(), new Dictionary<string, AlgorithmPerformance>());
                 var complete = new BacktestResultPacket(_job, completeResult, progress);
 
                 if (DateTime.Now > _nextS3Update)
@@ -360,9 +371,9 @@ namespace QuantConnect.Lean.Engine.Results
                     _messagingHandler.Send(backtestingPacket);
                 }
             }
-            catch (Exception err) 
+            catch (Exception err)
             {
-                Log.Error("BacktestingResultHandler().Update(): " + err.Message + " >> " + err.StackTrace );
+                Log.Error(err);
             }
         }
 
@@ -431,7 +442,7 @@ namespace QuantConnect.Lean.Engine.Results
             }
             catch (Exception err)
             {
-                Log.Error("BacktestingResultHandler.StoreResult(): " + err.Message);
+                Log.Error(err);
             }
         }
 
@@ -442,9 +453,9 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="orders">Collection of orders from the algorithm</param>
         /// <param name="profitLoss">Collection of time-profit values for the algorithm</param>
         /// <param name="holdings">Current holdings state for the algorithm</param>
-        /// <param name="statistics">Statistics information for the algorithm (empty if not finished)</param>
+        /// <param name="statisticsResults">Statistics information for the algorithm (empty if not finished)</param>
         /// <param name="banner">Runtime statistics banner information</param>
-        public void SendFinalResult(AlgorithmNodePacket job, Dictionary<int, Order> orders, Dictionary<DateTime, decimal> profitLoss, Dictionary<string, Holding> holdings, Dictionary<string, string> statistics, Dictionary<string, string> banner)
+        public void SendFinalResult(AlgorithmNodePacket job, Dictionary<int, Order> orders, Dictionary<DateTime, decimal> profitLoss, Dictionary<string, Holding> holdings, StatisticsResults statisticsResults, Dictionary<string, string> banner)
         { 
             try 
             {
@@ -452,9 +463,15 @@ namespace QuantConnect.Lean.Engine.Results
                 var charts = new Dictionary<string, Chart>(Charts);
                 _processingFinalPacket = true;
 
+                // clear the trades collection before placing inside the backtest result
+                foreach (var ap in statisticsResults.RollingPerformances.Values)
+                {
+                    ap.ClosedTrades.Clear();
+                }
+
                 //Create a result packet to send to the browser.
-                BacktestResultPacket result = new BacktestResultPacket((BacktestNodePacket) job,
-                    new BacktestResult(charts, orders, profitLoss, statistics), 1m)
+                var result = new BacktestResultPacket((BacktestNodePacket) job,
+                    new BacktestResult(charts, orders, profitLoss, statisticsResults.Summary, statisticsResults.RollingPerformances), 1m)
                 {
                     ProcessingTime = (DateTime.Now - _startTime).TotalSeconds,
                     DateFinished = DateTime.Now,
@@ -472,9 +489,9 @@ namespace QuantConnect.Lean.Engine.Results
 
                 Log.Trace("BacktestingResultHandler.SendAnalysisResult(): Processed final packet"); 
             } 
-            catch (Exception err) 
+            catch (Exception err)
             {
-                Log.Error("Algorithm.Worker.SendResult(): " + err.Message);
+                Log.Error(err);
             }
         }
 
@@ -488,7 +505,7 @@ namespace QuantConnect.Lean.Engine.Results
             _algorithm = algorithm;
             
             //Setup the sampling periods:
-            _jobDays = Time.TradeableDates(Algorithm.Securities, _job.PeriodStart, _job.PeriodFinish);
+            _jobDays = Time.TradeableDates(Algorithm.Securities.Values, _job.PeriodStart, _job.PeriodFinish);
 
             //Setup Debug Messaging:
             _debugMessageMax = Convert.ToInt32(10 * _jobDays);
@@ -591,26 +608,26 @@ namespace QuantConnect.Lean.Engine.Results
         /// Add a sample to the chart specified by the chartName, and seriesName.
         /// </summary>
         /// <param name="chartName">String chart name to place the sample.</param>
-        /// <param name="chartType">Type of chart we should create if it doesn't already exist.</param>
+        /// <param name="seriesIndex">Type of chart we should create if it doesn't already exist.</param>
         /// <param name="seriesName">Series name for the chart.</param>
         /// <param name="seriesType">Series type for the chart.</param>
         /// <param name="time">Time for the sample</param>
         /// <param name="unit">Unit of the sample</param>
         /// <param name="value">Value for the chart sample.</param>
-        public void Sample(string chartName, ChartType chartType, string seriesName, SeriesType seriesType, DateTime time, decimal value, string unit = "$") 
+        public void Sample(string chartName, string seriesName, int seriesIndex, SeriesType seriesType, DateTime time, decimal value, string unit = "$") 
         {
             lock (_chartLock)
             {
                 //Add a copy locally:
                 if (!Charts.ContainsKey(chartName))
                 {
-                    Charts.AddOrUpdate(chartName, new Chart(chartName, chartType));
+                    Charts.AddOrUpdate(chartName, new Chart(chartName));
                 }
 
                 //Add the sample to our chart:
                 if (!Charts[chartName].Series.ContainsKey(seriesName)) 
                 {
-                    Charts[chartName].Series.Add(seriesName, new Series(seriesName, seriesType, unit));
+                    Charts[chartName].Series.Add(seriesName, new Series(seriesName, seriesType, seriesIndex, unit));
                 }
 
                 //Add our value:
@@ -626,7 +643,7 @@ namespace QuantConnect.Lean.Engine.Results
         public void SampleEquity(DateTime time, decimal value) 
         {
             //Sample the Equity Value:
-            Sample("Strategy Equity", ChartType.Stacked, "Equity", SeriesType.Candle, time, value);
+            Sample("Strategy Equity", "Equity", 0, SeriesType.Candle, time, value, "$");
 
             //Recalculate the days processed:
             _daysProcessed = (time - _job.PeriodStart).TotalDays;
@@ -640,7 +657,18 @@ namespace QuantConnect.Lean.Engine.Results
         public void SamplePerformance(DateTime time, decimal value) 
         {
             //Added a second chart to equity plot - daily perforamnce:
-            Sample("Strategy Equity", ChartType.Stacked, "Daily Performance", SeriesType.Bar, time, value, "%");
+            Sample("Strategy Equity", "Daily Performance", 1, SeriesType.Bar, time, value, "%");
+        }
+
+        /// <summary>
+        /// Sample the current benchmark performance directly with a time-value pair.
+        /// </summary>
+        /// <param name="time">Current backtest date.</param>
+        /// <param name="value">Current benchmark value.</param>
+        /// <seealso cref="IResultHandler.Sample"/>
+        public void SampleBenchmark(DateTime time, decimal value)
+        {
+            Sample("Benchmark", "Benchmark", 0, SeriesType.Line, time, value, "$");
         }
 
         /// <summary>
@@ -656,7 +684,7 @@ namespace QuantConnect.Lean.Engine.Results
                     //Create the chart if it doesn't exist already:
                     if (!Charts.ContainsKey(update.Name)) 
                     {
-                        Charts.AddOrUpdate(update.Name, new Chart(update.Name, update.ChartType));
+                        Charts.AddOrUpdate(update.Name, new Chart(update.Name));
                     }
 
                     //Add these samples to this chart.
@@ -665,7 +693,7 @@ namespace QuantConnect.Lean.Engine.Results
                         //If we don't already have this record, its the first packet
                         if (!Charts[update.Name].Series.ContainsKey(series.Name))
                         {
-                            Charts[update.Name].Series.Add(series.Name, new Series(series.Name, series.SeriesType));
+                            Charts[update.Name].Series.Add(series.Name, new Series(series.Name, series.SeriesType, series.Index, series.Unit));
                         }
 
                         //We already have this record, so just the new samples to the end:
@@ -702,11 +730,10 @@ namespace QuantConnect.Lean.Engine.Results
         /// <summary>
         /// Send an algorithm status update to the browser.
         /// </summary>
-        /// <param name="algorithmId">Algorithm id for the status update.</param>
         /// <param name="status">Status enum value.</param>
         /// <param name="message">Additional optional status message.</param>
         /// <remarks>In backtesting we do not send the algorithm status updates.</remarks>
-        public void SendStatusUpdate(string algorithmId, AlgorithmStatus status, string message = "")
+        public void SendStatusUpdate(AlgorithmStatus status, string message = "")
         { 
             //NOP. Don't send status for backtests
         }
@@ -717,7 +744,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="symbol">Symbol we're sampling.</param>
         /// <param name="time">Time of sample</param>
         /// <param name="value">Value of the asset price</param>
-        public void SampleAssetPrices(string symbol, DateTime time, decimal value)
+        public void SampleAssetPrices(Symbol symbol, DateTime time, decimal value)
         {
             //NOP. Don't sample asset prices in console.
         }
@@ -808,7 +835,7 @@ namespace QuantConnect.Lean.Engine.Results
             }
             catch (Exception err)
             {
-                Log.Error("BacktestingResultHandler.ProcessLogMessages(): " + err.Message);
+                Log.Error(err);
             }
             Log.Trace("BacktestingResultHandler.ProcessLogMessages(): Ready: " + remoteUrl);
             return remoteUrl;

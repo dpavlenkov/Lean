@@ -24,6 +24,7 @@ using QuantConnect.Lean.Engine.Setup;
 using QuantConnect.Lean.Engine.TransactionHandlers;
 using QuantConnect.Orders;
 using QuantConnect.Packets;
+using QuantConnect.Statistics;
 
 namespace QuantConnect.Lean.Engine.Results
 {
@@ -131,21 +132,21 @@ namespace QuantConnect.Lean.Engine.Results
         /// Add a sample to the chart specified by the chartName, and seriesName.
         /// </summary>
         /// <param name="chartName">String chart name to place the sample.</param>
-        /// <param name="chartType">Type of chart we should create if it doesn't already exist.</param>
         /// <param name="seriesName">Series name for the chart.</param>
         /// <param name="seriesType">Series type for the chart.</param>
         /// <param name="time">Time for the sample</param>
         /// <param name="value">Value for the chart sample.</param>
         /// <param name="unit">Unit for the sample chart</param>
+        /// <param name="seriesIndex">Index of the series we're sampling</param>
         /// <remarks>Sample can be used to create new charts or sample equity - daily performance.</remarks>
-        void Sample(string chartName, ChartType chartType, string seriesName, SeriesType seriesType, DateTime time, decimal value, string unit = "$");
+        void Sample(string chartName, string seriesName, int seriesIndex, SeriesType seriesType, DateTime time, decimal value, string unit = "$");
 
         /// <summary>
         /// Wrapper methond on sample to create the equity chart.
         /// </summary>
         /// <param name="time">Time of the sample.</param>
         /// <param name="value">Equity value at this moment in time.</param>
-        /// <seealso cref="Sample(string,ChartType,string,SeriesType,DateTime,decimal,string)"/>
+        /// <seealso cref="Sample(string,string,int,SeriesType,DateTime,decimal,string)"/>
         void SampleEquity(DateTime time, decimal value);
 
         /// <summary>
@@ -153,8 +154,16 @@ namespace QuantConnect.Lean.Engine.Results
         /// </summary>
         /// <param name="time">Current backtest date.</param>
         /// <param name="value">Current daily performance value.</param>
-        /// <seealso cref="Sample(string,ChartType,string,SeriesType,DateTime,decimal,string)"/>
+        /// <seealso cref="Sample(string,string,int,SeriesType,DateTime,decimal,string)"/>
         void SamplePerformance(DateTime time, decimal value);
+
+        /// <summary>
+        /// Sample the current benchmark performance directly with a time-value pair.
+        /// </summary>
+        /// <param name="time">Current backtest date.</param>
+        /// <param name="value">Current benchmark value.</param>
+        /// <seealso cref="Sample(string,string,int,SeriesType,DateTime,decimal,string)"/>
+        void SampleBenchmark(DateTime time, decimal value);
 
         /// <summary>
         /// Sample the asset prices to generate plots.
@@ -162,14 +171,14 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="symbol">Symbol we're sampling.</param>
         /// <param name="time">Time of sample</param>
         /// <param name="value">Value of the asset price</param>
-        /// <seealso cref="Sample(string,ChartType,string,SeriesType,DateTime,decimal,string)"/>
-        void SampleAssetPrices(string symbol, DateTime time, decimal value);
+        /// <seealso cref="Sample(string,string,int,SeriesType,DateTime,decimal,string)"/>
+        void SampleAssetPrices(Symbol symbol, DateTime time, decimal value);
 
         /// <summary>
         /// Add a range of samples from the users algorithms to the end of our current list.
         /// </summary>
         /// <param name="samples">Chart updates since the last request.</param>
-        /// <seealso cref="Sample(string,ChartType,string,SeriesType,DateTime,decimal,string)"/>
+        /// <seealso cref="Sample(string,string,int,SeriesType,DateTime,decimal,string)"/>
         void SampleRange(List<Chart> samples);
 
         /// <summary>
@@ -189,15 +198,20 @@ namespace QuantConnect.Lean.Engine.Results
         /// <summary>
         /// Post the final result back to the controller worker if backtesting, or to console if local.
         /// </summary>
-        void SendFinalResult(AlgorithmNodePacket job, Dictionary<int, Order> orders, Dictionary<DateTime, decimal> profitLoss, Dictionary<string, Holding> holdings, Dictionary<string, string> statistics, Dictionary<string, string> banner);
+        /// <param name="job">Lean AlgorithmJob task</param>
+        /// <param name="orders">Collection of orders from the algorithm</param>
+        /// <param name="profitLoss">Collection of time-profit values for the algorithm</param>
+        /// <param name="holdings">Current holdings state for the algorithm</param>
+        /// <param name="statisticsResults">Statistics information for the algorithm (empty if not finished)</param>
+        /// <param name="banner">Runtime statistics banner information</param>
+        void SendFinalResult(AlgorithmNodePacket job, Dictionary<int, Order> orders, Dictionary<DateTime, decimal> profitLoss, Dictionary<string, Holding> holdings, StatisticsResults statisticsResults, Dictionary<string, string> banner);
 
         /// <summary>
         /// Send a algorithm status update to the user of the algorithms running state.
         /// </summary>
-        /// <param name="algorithmId">String Id of the algorithm.</param>
         /// <param name="status">Status enum of the algorithm.</param>
         /// <param name="message">Optional string message describing reason for status change.</param>
-        void SendStatusUpdate(string algorithmId, AlgorithmStatus status, string message = "");
+        void SendStatusUpdate(AlgorithmStatus status, string message = "");
 
         /// <summary>
         /// Set the chart name:

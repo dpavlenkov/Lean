@@ -25,6 +25,15 @@ namespace QuantConnect.Messaging
     public class Messaging : IMessagingHandler
     {
         /// <summary>
+        /// The default implementation doesn't send messages, so this does nothing.
+        /// </summary>
+        public bool HasSubscribers
+        {
+            get; 
+            set;
+        }
+
+        /// <summary>
         /// Initialize the messaging system
         /// </summary>
         public void Initialize()
@@ -83,7 +92,7 @@ namespace QuantConnect.Messaging
         /// <summary>
         /// Send an algorithm status update
         /// </summary>
-        public void AlgorithmStatus(string algorithmId, AlgorithmStatus status, string message = "")
+        public void AlgorithmStatus(string algorithmId, int projectId, AlgorithmStatus status, string message = "")
         {
             //
         }

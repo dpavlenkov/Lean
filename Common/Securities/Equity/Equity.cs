@@ -13,6 +13,7 @@
  * limitations under the License.
 */
 
+using System;
 using QuantConnect.Data;
 
 namespace QuantConnect.Securities.Equity 
@@ -24,10 +25,20 @@ namespace QuantConnect.Securities.Equity
     public class Equity : Security
     {
         /// <summary>
+        /// The default number of days required to settle an equity sale
+        /// </summary>
+        public const int DefaultSettlementDays = 3;
+
+        /// <summary>
+        /// The default time of day for settlement
+        /// </summary>
+        public static readonly TimeSpan DefaultSettlementTime = new TimeSpan(8, 0, 0);
+
+        /// <summary>
         /// Construct the Equity Object
         /// </summary>
-        public Equity(SubscriptionDataConfig config, decimal leverage, bool isDynamicallyLoadedData = false)
-            : this(SecurityExchangeHoursProvider.FromDataFolder().GetExchangeHours(config), config, leverage, isDynamicallyLoadedData)
+        public Equity(SubscriptionDataConfig config, decimal leverage)
+            : this(MarketHoursDatabase.FromDataFolder().GetExchangeHours(config), config, leverage)
         {
             // this constructor is provided for backward compatibility
 
@@ -37,8 +48,8 @@ namespace QuantConnect.Securities.Equity
         /// <summary>
         /// Construct the Equity Object
         /// </summary>
-        public Equity(SecurityExchangeHours exchangeHours, SubscriptionDataConfig config, decimal leverage, bool isDynamicallyLoadedData = false) 
-            : base(exchangeHours, config, leverage, isDynamicallyLoadedData) 
+        public Equity(SecurityExchangeHours exchangeHours, SubscriptionDataConfig config, decimal leverage) 
+            : base(exchangeHours, config, leverage) 
         {
             //Holdings for new Vehicle:
             Cache = new EquityCache();
@@ -48,6 +59,7 @@ namespace QuantConnect.Securities.Equity
             TransactionModel = new EquityTransactionModel();
             PortfolioModel = new EquityPortfolioModel();
             MarginModel = new EquityMarginModel(leverage);
+            SettlementModel = new ImmediateSettlementModel();
             Holdings = new EquityHolding(this, TransactionModel, MarginModel);
         }
     }

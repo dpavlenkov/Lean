@@ -23,6 +23,7 @@ using QuantConnect.Algorithm;
 using QuantConnect.Configuration;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Lean.Engine.DataFeeds;
 using QuantConnect.Lean.Engine.RealTime;
@@ -41,7 +42,7 @@ namespace QuantConnect.Lean.Engine
     public class AlgorithmManager
     {
         private DateTime _previousTime;
-        private AlgorithmStatus _algorithmState = AlgorithmStatus.Running;
+        private IAlgorithm _algorithm;
         private readonly object _lock = new object();
         private string _algorithmId = "";
         private DateTime _currentTimeStepTime;
@@ -53,10 +54,7 @@ namespace QuantConnect.Lean.Engine
         /// </summary>
         public AlgorithmStatus State
         {
-            get
-            {
-                return _algorithmState;
-            }
+            get { return _algorithm == null ? AlgorithmStatus.Running : _algorithm.Status; }
         }
 
         /// <summary>
@@ -64,10 +62,7 @@ namespace QuantConnect.Lean.Engine
         /// </summary>
         public string AlgorithmId
         {
-            get
-            {
-                return _algorithmId;
-            }
+            get { return _algorithmId; }
         }
 
         /// <summary>
@@ -92,10 +87,7 @@ namespace QuantConnect.Lean.Engine
         /// <seealso cref="QCAlgorithm.Quit"/>
         public bool QuitState
         {
-            get
-            {
-                return _algorithmState == AlgorithmStatus.Deleted;
-            }
+            get { return State == AlgorithmStatus.Deleted; }
         }
 
         /// <summary>
@@ -103,12 +95,13 @@ namespace QuantConnect.Lean.Engine
         /// </summary>
         public long DataPoints
         {
-            get
-            {
-                return _dataPointCount;
-            }
+            get { return _dataPointCount; }
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AlgorithmManager"/> class
+        /// </summary>
+        /// <param name="liveMode">True if we're running in live mode, false for backtest mode</param>
         public AlgorithmManager(bool liveMode)
         {
             TimeLoopWithinLimits = () =>
@@ -131,22 +124,27 @@ namespace QuantConnect.Lean.Engine
         /// <param name="transactions">Transaction manager object</param>
         /// <param name="results">Result handler object</param>
         /// <param name="realtime">Realtime processing object</param>
+        /// <param name="commands">The command queue for relaying extenal commands to the algorithm</param>
         /// <param name="token">Cancellation token</param>
         /// <remarks>Modify with caution</remarks>
-        public void Run(AlgorithmNodePacket job, IAlgorithm algorithm, IDataFeed feed, ITransactionHandler transactions, IResultHandler results, IRealTimeHandler realtime, CancellationToken token) 
+        public void Run(AlgorithmNodePacket job, IAlgorithm algorithm, IDataFeed feed, ITransactionHandler transactions, IResultHandler results, IRealTimeHandler realtime, ICommandQueueHandler commands, CancellationToken token) 
         {
             //Initialize:
             _dataPointCount = 0;
-            var startingPortfolioValue = algorithm.Portfolio.TotalPortfolioValue;
+            _algorithm = algorithm;
+            var portfolioValue = algorithm.Portfolio.TotalPortfolioValue;
             var backtestMode = (job.Type == PacketType.BacktestNode);
             var methodInvokers = new Dictionary<Type, MethodInvoker>();
             var marginCallFrequency = TimeSpan.FromMinutes(5);
             var nextMarginCallTime = DateTime.MinValue;
+            var settlementScanFrequency = TimeSpan.FromMinutes(30);
+            var nextSettlementScanTime = DateTime.MinValue;
+
             var delistingTickets = new List<OrderTicket>();
 
             //Initialize Properties:
             _algorithmId = job.AlgorithmId;
-            _algorithmState = AlgorithmStatus.Running;
+            _algorithm.Status = AlgorithmStatus.Running;
             _previousTime = algorithm.StartDate.Date;
 
             //Create the method accessors to push generic types into algorithm: Find all OnData events:
@@ -159,6 +157,7 @@ namespace QuantConnect.Lean.Engine
             var hasOnDataDividends = AddMethodInvoker<Dividends>(algorithm, methodInvokers);
             var hasOnDataSplits = AddMethodInvoker<Splits>(algorithm, methodInvokers);
             var hasOnDataDelistings = AddMethodInvoker<Delistings>(algorithm, methodInvokers);
+            var hasOnDataSymbolChangedEvents = AddMethodInvoker<SymbolChangedEvents>(algorithm, methodInvokers);
 
             // Algorithm 3.0 data accessors
             var hasOnDataSlice = algorithm.GetType().GetMethods()
@@ -166,10 +165,10 @@ namespace QuantConnect.Lean.Engine
                 .FirstOrDefault(x => x.DeclaringType == algorithm.GetType()) != null;
 
             //Go through the subscription types and create invokers to trigger the event handlers for each custom type:
-            foreach (var config in feed.Subscriptions) 
+            foreach (var config in algorithm.SubscriptionManager.Subscriptions) 
             {
                 //If type is a tradebar, combine tradebars and ticks into unified array:
-                if (config.Type.Name != "TradeBar" && config.Type.Name != "Tick") 
+                if (config.Type.Name != "TradeBar" && config.Type.Name != "Tick" && !config.IsInternalFeed) 
                 {
                     //Get the matching method for this event handler - e.g. public void OnData(Quandl data) { .. }
                     var genericMethod = (algorithm.GetType()).GetMethod("OnData", new[] { config.Type });
@@ -181,7 +180,7 @@ namespace QuantConnect.Lean.Engine
                     if (genericMethod == null && !hasOnDataSlice)
                     {
                         algorithm.RunTimeError = new Exception("Data event handler not found, please create a function matching this template: public void OnData(" + config.Type.Name + " data) {  }");
-                        _algorithmState = AlgorithmStatus.RuntimeError;
+                        _algorithm.Status = AlgorithmStatus.RuntimeError;
                         return;
                     }
                     if (genericMethod != null)
@@ -193,15 +192,15 @@ namespace QuantConnect.Lean.Engine
 
             //Loop over the queues: get a data collection, then pass them all into relevent methods in the algorithm.
             Log.Trace("AlgorithmManager.Run(): Begin DataStream - Start: " + algorithm.StartDate + " Stop: " + algorithm.EndDate);
-            foreach (var timeSlice in feed.Bridge.GetConsumingEnumerable(token))
+            foreach (var timeSlice in Stream(job, algorithm, feed, results, token))
             {
                 // reset our timer on each loop
                 _currentTimeStepTime = DateTime.UtcNow;
 
                 //Check this backtest is still running:
-                if (_algorithmState != AlgorithmStatus.Running)
+                if (_algorithm.Status != AlgorithmStatus.Running)
                 {
-                    Log.Error(string.Format("AlgorithmManager.Run(): Algorthm state changed to {0} at {1}", _algorithmState, timeSlice.Time));
+                    Log.Error(string.Format("AlgorithmManager.Run(): Algorithm state changed to {0} at {1}", _algorithm.Status, timeSlice.Time));
                     break;
                 }
 
@@ -212,8 +211,29 @@ namespace QuantConnect.Lean.Engine
                     return;
                 }
 
+                // before doing anything, check our command queue
+                foreach (var command in commands.GetCommands())
+                {
+                    if (command == null) continue;
+                    Log.Trace("AlgorithmManager.Run(): Executing {0}", command);
+                    CommandResultPacket result;
+                    try
+                    {
+                        result = command.Run(algorithm);
+                    }
+                    catch (Exception err)
+                    {
+                        Log.Error(err);
+                        algorithm.Error(string.Format("{0} Error: {1}", command.GetType().Name, err.Message));
+                        result = new CommandResultPacket(command, false);
+                    }
+
+                    // send the result of the command off to the result handler
+                    results.Messages.Enqueue(result);
+                }
+
                 var time = timeSlice.Time;
-                var newData = timeSlice.Data;
+                _dataPointCount += timeSlice.DataPointCount;
 
                 //If we're in backtest mode we need to capture the daily performance. We do this here directly
                 //before updating the algorithm state with the new data from this time step, otherwise we'll
@@ -223,33 +243,82 @@ namespace QuantConnect.Lean.Engine
                     //On day-change sample equity and daily performance for statistics calculations
                     if (_previousTime.Date != time.Date)
                     {
+                        SampleBenchmark(algorithm, results, _previousTime.Date);
+
                         //Sample the portfolio value over time for chart.
                         results.SampleEquity(_previousTime, Math.Round(algorithm.Portfolio.TotalPortfolioValue, 4));
 
                         //Check for divide by zero
-                        if (startingPortfolioValue == 0m)
+                        if (portfolioValue == 0m)
                         {
                             results.SamplePerformance(_previousTime.Date, 0);
                         }
                         else
                         {
-                            results.SamplePerformance(_previousTime.Date, Math.Round((algorithm.Portfolio.TotalPortfolioValue - startingPortfolioValue) * 100 / startingPortfolioValue, 10));
+                            results.SamplePerformance(_previousTime.Date, Math.Round((algorithm.Portfolio.TotalPortfolioValue - portfolioValue) * 100 / portfolioValue, 10));
                         }
-                        startingPortfolioValue = algorithm.Portfolio.TotalPortfolioValue;
+                        portfolioValue = algorithm.Portfolio.TotalPortfolioValue;
                     }
+                }
+                else
+                {
+                    // live mode continously sample the benchmark
+                    SampleBenchmark(algorithm, results, time);
                 }
 
                 //Update algorithm state after capturing performance from previous day
-                
+
                 //Set the algorithm and real time handler's time
                 algorithm.SetDateTime(time);
-                realtime.SetTime(algorithm.Time);
+
+                if (timeSlice.Slice.SymbolChangedEvents.Count != 0)
+                {
+                    if (hasOnDataSymbolChangedEvents)
+                    {
+                        methodInvokers[typeof (SymbolChangedEvents)](algorithm, timeSlice.Slice.SymbolChangedEvents);
+                    }
+                    foreach (var symbol in timeSlice.Slice.SymbolChangedEvents.Keys)
+                    {
+                        // cancel all orders for the old symbol
+                        foreach (var ticket in transactions.GetOrderTickets(x => x.Status.IsOpen() && x.Symbol == symbol))
+                        {
+                            ticket.Cancel("Open order cancelled on symbol changed event");
+                        }
+                    }
+                }
+
+                if (timeSlice.SecurityChanges != SecurityChanges.None)
+                {
+                    foreach (var security in timeSlice.SecurityChanges.AddedSecurities)
+                    {
+                        if (!algorithm.Securities.ContainsKey(security.Symbol))
+                        {
+                            // add the new security
+                            algorithm.Securities.Add(security);
+                        }
+                    }
+                }
 
                 //On each time step push the real time prices to the cashbook so we can have updated conversion rates
-                algorithm.Portfolio.CashBook.Update(newData);
+                foreach (var kvp in timeSlice.CashBookUpdateData)
+                {
+                    kvp.Key.Update(kvp.Value);
+                }
 
                 //Update the securities properties: first before calling user code to avoid issues with data
-                algorithm.Securities.Update(time, newData);
+                foreach (var kvp in timeSlice.SecuritiesUpdateData)
+                {
+                    kvp.Key.SetMarketPrice(kvp.Value);
+
+                    // Send market price updates to the TradeBuilder
+                    if (kvp.Value != null)
+                    {
+                        algorithm.TradeBuilder.SetMarketPrice(kvp.Key.Symbol, kvp.Value.Price);
+                    }
+                }
+
+                // fire real time events after we've updated based on the new data
+                realtime.SetTime(timeSlice.Time);
 
                 // process fill models on the updated data before entering algorithm, applies to all non-market orders
                 transactions.ProcessSynchronousEvents();
@@ -263,51 +332,54 @@ namespace QuantConnect.Lean.Engine
                         {
                             algorithm.Securities.Remove(ticket.Symbol);
                             delistingTickets.RemoveAt(i--);
-                            Log.Trace("AlgorithmManager.Run(): Security removed: " + ticket.Symbol);
+                            Log.Trace("AlgorithmManager.Run(): Delisted Security removed: " + ticket.Symbol.ToString());
                         }
                     }
                 }
 
                 //Check if the user's signalled Quit: loop over data until day changes.
-                if (algorithm.GetQuit())
+                if (algorithm.Status == AlgorithmStatus.Stopped)
                 {
-                    _algorithmState = AlgorithmStatus.Quit;
                     Log.Trace("AlgorithmManager.Run(): Algorithm quit requested.");
                     break;
                 }
                 if (algorithm.RunTimeError != null)
                 {
-                    _algorithmState = AlgorithmStatus.RuntimeError;
+                    _algorithm.Status = AlgorithmStatus.RuntimeError;
                     Log.Trace(string.Format("AlgorithmManager.Run(): Algorithm encountered a runtime error at {0}. Error: {1}", timeSlice.Time, algorithm.RunTimeError));
                     break;
                 }
 
                 // perform margin calls, in live mode we can also use realtime to emit these
-                if (time >= nextMarginCallTime || (_liveMode && nextMarginCallTime > DateTime.Now))
+                if (time >= nextMarginCallTime || (_liveMode && nextMarginCallTime > DateTime.UtcNow))
                 {
                     // determine if there are possible margin call orders to be executed
                     bool issueMarginCallWarning;
                     var marginCallOrders = algorithm.Portfolio.ScanForMarginCall(out issueMarginCallWarning);
                     if (marginCallOrders.Count != 0)
                     {
+                        var executingMarginCall = false;
                         try
                         {
                             // tell the algorithm we're about to issue the margin call
                             algorithm.OnMarginCall(marginCallOrders);
+
+                            executingMarginCall = true;
+
+                            // execute the margin call orders
+                            var executedTickets = algorithm.Portfolio.MarginCallModel.ExecuteMarginCall(marginCallOrders);
+                            foreach (var ticket in executedTickets)
+                            {
+                                algorithm.Error(string.Format("{0} - Executed MarginCallOrder: {1} - Quantity: {2} @ {3}", algorithm.Time, ticket.Symbol, ticket.Quantity, ticket.AverageFillPrice));
+                            }
                         }
                         catch (Exception err)
                         {
                             algorithm.RunTimeError = err;
-                            _algorithmState = AlgorithmStatus.RuntimeError;
-                            Log.Error("AlgorithmManager.Run(): RuntimeError: OnMarginCall: " + err.Message + " STACK >>> " + err.StackTrace);
+                            _algorithm.Status = AlgorithmStatus.RuntimeError;
+                            var locator = executingMarginCall ? "Portfolio.MarginCallModel.ExecuteMarginCall" : "OnMarginCall";
+                            Log.Error(string.Format("AlgorithmManager.Run(): RuntimeError: {0}: ", locator) + err);
                             return;
-                        }
-
-                        // execute the margin call orders
-                        var executedTickets = algorithm.Portfolio.MarginCallModel.ExecuteMarginCall(marginCallOrders);
-                        foreach (var ticket in executedTickets)
-                        {
-                            algorithm.Error(string.Format("{0} - Executed MarginCallOrder: {1} - Quantity: {2} @ {3}", algorithm.Time, ticket.Symbol, ticket.Quantity, ticket.OrderEvents.Last().FillPrice));
                         }
                     }
                     // we didn't perform a margin call, but got the warning flag back, so issue the warning to the algorithm
@@ -320,212 +392,176 @@ namespace QuantConnect.Lean.Engine
                         catch (Exception err)
                         {
                             algorithm.RunTimeError = err;
-                            _algorithmState = AlgorithmStatus.RuntimeError;
-                            Log.Error("AlgorithmManager.Run(): RuntimeError: OnMarginCallWarning: " + err.Message + " STACK >>> " + err.StackTrace);
+                            _algorithm.Status = AlgorithmStatus.RuntimeError;
+                            Log.Error("AlgorithmManager.Run(): RuntimeError: OnMarginCallWarning: " + err);
+                            return;
                         }
                     }
 
                     nextMarginCallTime = time + marginCallFrequency;
                 }
 
-                //Trigger the data events: Invoke the types we have data for:
-                var newBars = new TradeBars(algorithm.Time);
-                var newTicks = new Ticks(algorithm.Time);
-                var newDividends = new Dividends(algorithm.Time);
-                var newSplits = new Splits(algorithm.Time);
-                var newDelistings = new Delistings(algorithm.Time);
-
-                //Invoke all non-tradebars, non-ticks methods and build up the TradeBars and Ticks dictionaries
-                // --> i == Subscription Configuration Index, so we don't need to compare types.
-                foreach (var i in newData.Keys)
+                // perform check for settlement of unsettled funds
+                if (time >= nextSettlementScanTime || (_liveMode && nextSettlementScanTime > DateTime.UtcNow))
                 {
-                    //Data point and config of this point:
-                    var dataPoints = newData[i];
-                    var config = feed.Subscriptions[i];
+                    algorithm.Portfolio.ScanForCashSettlement(algorithm.UtcTime);
 
-                    //Keep track of how many data points we've processed
-                    _dataPointCount += dataPoints.Count;
+                    nextSettlementScanTime = time + settlementScanFrequency;
+                }
 
-                    //We don't want to pump data that we added just for currency conversions
-                    if (config.IsInternalFeed)
+                // before we call any events, let the algorithm know about universe changes
+                if (timeSlice.SecurityChanges != SecurityChanges.None)
+                {
+                    try
                     {
-                        continue;
+                        algorithm.OnSecuritiesChanged(timeSlice.SecurityChanges);
                     }
-
-                    //Create TradeBars Unified Data --> OR --> invoke generic data event. One loop.
-                    //  Aggregate Dividends and Splits -- invoke portfolio application methods
-                    foreach (var dataPoint in dataPoints)
+                    catch (Exception err)
                     {
-                        var dividend = dataPoint as Dividend;
-                        if (dividend != null)
-                        {
-                            Log.Trace("AlgorithmManager.Run(): Applying Dividend for " + dividend.Symbol);
-                            // if this is a dividend apply to portfolio
-                            algorithm.Portfolio.ApplyDividend(dividend);
-                            if (hasOnDataDividends)
-                            {
-                                // and add to our data dictionary to pump into OnData(Dividends data)
-                                newDividends.Add(dividend);
-                            }
-                            continue;
-                        }
+                        algorithm.RunTimeError = err;
+                        _algorithm.Status = AlgorithmStatus.RuntimeError;
+                        Log.Error("AlgorithmManager.Run(): RuntimeError: OnSecuritiesChanged event: " + err);
+                        return;
+                    }
+                }
 
-                        var split = dataPoint as Split;
-                        if (split != null)
-                        {
-                            Log.Trace("AlgorithmManager.Run(): Applying Split for " + split.Symbol);
-                            // if this is a split apply to portfolio
-                            algorithm.Portfolio.ApplySplit(split);
-                            // apply the split to open orders as well in raw mode, all other modes are split adjusted
-                            if (_liveMode || algorithm.Securities[split.Symbol].SubscriptionDataConfig.DataNormalizationMode == DataNormalizationMode.Raw)
-                            {
-                                // in live mode we always want to have our order match the order at the brokerage, so apply the split to the orders
-                                var openOrders = transactions.GetOrderTickets(ticket => ticket.Status.IsOpen() && ticket.Symbol == split.Symbol);
-                                algorithm.BrokerageModel.ApplySplit(openOrders.ToList(), split);
-                            }
-                            if (hasOnDataSplits)
-                            {
-                                // and add to our data dictionary to pump into OnData(Splits data)
-                                newSplits.Add(split);
-                            }
-                            continue;
-                        }
+                // apply dividends
+                foreach (var dividend in timeSlice.Slice.Dividends.Values)
+                {
+                    Log.Trace("AlgorithmManager.Run(): Applying Dividend for " + dividend.Symbol.ToString(), true);
+                    algorithm.Portfolio.ApplyDividend(dividend);
+                }
 
-                        var delisting = dataPoint as Delisting;
-                        if (delisting != null)
+                // apply splits
+                foreach (var split in timeSlice.Slice.Splits.Values)
+                {
+                    try
+                    {
+                        Log.Trace("AlgorithmManager.Run(): Applying Split for " + split.Symbol.ToString(), true);
+                        algorithm.Portfolio.ApplySplit(split);
+                        // apply the split to open orders as well in raw mode, all other modes are split adjusted
+                        if (_liveMode || algorithm.Securities[split.Symbol].SubscriptionDataConfig.DataNormalizationMode == DataNormalizationMode.Raw)
                         {
-                            if (hasOnDataDelistings)
-                            {
-                                // add to out data dictonary to pump into OnData(Delistings data)
-                                newDelistings.Add(delisting);
-                            }
+                            // in live mode we always want to have our order match the order at the brokerage, so apply the split to the orders
+                            var openOrders = transactions.GetOrderTickets(ticket => ticket.Status.IsOpen() && ticket.Symbol == split.Symbol);
+                            algorithm.BrokerageModel.ApplySplit(openOrders.ToList(), split);
                         }
+                    }
+                    catch (Exception err)
+                    {
+                        algorithm.RunTimeError = err;
+                        _algorithm.Status = AlgorithmStatus.RuntimeError;
+                        Log.Error("AlgorithmManager.Run(): RuntimeError: Split event: " + err);
+                        return;
+                    }
+                }
 
-                        //Update registered consolidators for this symbol index
-                        try
+                //Update registered consolidators for this symbol index
+                try
+                {
+                    foreach (var kvp in timeSlice.ConsolidatorUpdateData)
+                    {
+                        var consolidators = kvp.Key.Consolidators;
+                        foreach (var dataPoint in kvp.Value)
                         {
-                            foreach (var consolidator in config.Consolidators)
+                            foreach (var consolidator in consolidators)
                             {
                                 consolidator.Update(dataPoint);
                             }
                         }
-                        catch (Exception err)
-                        {
-                            algorithm.RunTimeError = err;
-                            _algorithmState = AlgorithmStatus.RuntimeError;
-                            Log.Error("AlgorithmManager.Run(): RuntimeError: Consolidators update: " + err.Message);
-                            return;
-                        }
+                    }
+                }
+                catch (Exception err)
+                {
+                    algorithm.RunTimeError = err;
+                    _algorithm.Status = AlgorithmStatus.RuntimeError;
+                    Log.Error("AlgorithmManager.Run(): RuntimeError: Consolidators update: " + err);
+                    return;
+                }
 
-                        // TRADEBAR -- add to our dictionary
-                        if (dataPoint.DataType == MarketDataType.TradeBar)
-                        {
-                            var bar = dataPoint as TradeBar;
-                            if (bar != null)
-                            {
-                                newBars[bar.Symbol] = bar;
-                                continue;
-                            }
-                        }
+                // fire custom event handlers
+                foreach (var kvp in timeSlice.CustomData)
+                {
+                    MethodInvoker methodInvoker;
+                    var type = kvp.Key.SubscriptionDataConfig.Type;
+                    if (!methodInvokers.TryGetValue(type, out methodInvoker))
+                    {
+                        continue;
+                    }
 
-                        // TICK -- add to our dictionary
-                        if (dataPoint.DataType == MarketDataType.Tick)
+                    try
+                    {
+                        foreach (var dataPoint in kvp.Value)
                         {
-                            var tick = dataPoint as Tick;
-                            if (tick != null)
-                            {
-                                List<Tick> ticks;
-                                if (!newTicks.TryGetValue(tick.Symbol, out ticks))
-                                {
-                                    ticks = new List<Tick>(3);
-                                    newTicks.Add(tick.Symbol, ticks);
-                                }
-                                ticks.Add(tick);
-                                continue;
-                            }
-                        }
-
-                        // if it was nothing else then it must be custom data
-
-                        // CUSTOM DATA -- invoke on data method
-                        //Send data into the generic algorithm event handlers
-                        try
-                        {
-                            MethodInvoker methodInvoker;
-                            if (methodInvokers.TryGetValue(config.Type, out methodInvoker))
+                            if (type.IsInstanceOfType(dataPoint))
                             {
                                 methodInvoker(algorithm, dataPoint);
                             }
                         }
-                        catch (Exception err)
-                        {
-                            algorithm.RunTimeError = err;
-                            _algorithmState = AlgorithmStatus.RuntimeError;
-                            Log.Error("AlgorithmManager.Run(): RuntimeError: Custom Data: " + err.Message + " STACK >>> " + err.StackTrace);
-                            return;
-                        }
+                    }
+                    catch (Exception err)
+                    {
+                        algorithm.RunTimeError = err;
+                        _algorithm.Status = AlgorithmStatus.RuntimeError;
+                        Log.Error("AlgorithmManager.Run(): RuntimeError: Custom Data: " + err);
+                        return;
                     }
                 }
 
                 try
                 {
                     // fire off the dividend and split events before pricing events
-                    if (hasOnDataDividends && newDividends.Count != 0)
+                    if (hasOnDataDividends && timeSlice.Slice.Dividends.Count != 0)
                     {
-                        methodInvokers[typeof (Dividends)](algorithm, newDividends);
+                        methodInvokers[typeof(Dividends)](algorithm, timeSlice.Slice.Dividends);
                     }
-                    if (hasOnDataSplits && newSplits.Count != 0)
+                    if (hasOnDataSplits && timeSlice.Slice.Splits.Count != 0)
                     {
-                        methodInvokers[typeof (Splits)](algorithm, newSplits);
+                        methodInvokers[typeof(Splits)](algorithm, timeSlice.Slice.Splits);
                     }
-                    if (hasOnDataDelistings && newDelistings.Count != 0)
+                    if (hasOnDataDelistings && timeSlice.Slice.Delistings.Count != 0)
                     {
-                        methodInvokers[typeof (Delistings)](algorithm, newDelistings);
+                        methodInvokers[typeof(Delistings)](algorithm, timeSlice.Slice.Delistings);
                     }
                 }
                 catch (Exception err)
                 {
                     algorithm.RunTimeError = err;
-                    _algorithmState = AlgorithmStatus.RuntimeError;
-                    Log.Error("AlgorithmManager.Run(): RuntimeError: Dividends/Splits/Delistings: " + err.Message + " STACK >>> " + err.StackTrace);
+                    _algorithm.Status = AlgorithmStatus.RuntimeError;
+                    Log.Error("AlgorithmManager.Run(): RuntimeError: Dividends/Splits/Delistings: " + err);
                     return;
                 }
 
                 // run the delisting logic after firing delisting events
-                HandleDelistedSymbols(algorithm, newDelistings, delistingTickets);
+                HandleDelistedSymbols(algorithm, timeSlice.Slice.Delistings, delistingTickets);
 
                 //After we've fired all other events in this second, fire the pricing events:
                 try
                 {
-                    if (hasOnDataTradeBars && newBars.Count > 0) methodInvokers[typeof (TradeBars)](algorithm, newBars);
-                    if (hasOnDataTicks && newTicks.Count > 0) methodInvokers[typeof (Ticks)](algorithm, newTicks);
+                    if (hasOnDataTradeBars && timeSlice.Slice.Bars.Count > 0) methodInvokers[typeof(TradeBars)](algorithm, timeSlice.Slice.Bars);
+                    if (hasOnDataTicks && timeSlice.Slice.Ticks.Count > 0) methodInvokers[typeof(Ticks)](algorithm, timeSlice.Slice.Ticks);
                 }
                 catch (Exception err)
                 {
                     algorithm.RunTimeError = err;
-                    _algorithmState = AlgorithmStatus.RuntimeError;
-                    Log.Error("AlgorithmManager.Run(): RuntimeError: New Style Mode: " + err.Message + " STACK >>> " + err.StackTrace);
+                    _algorithm.Status = AlgorithmStatus.RuntimeError;
+                    Log.Error("AlgorithmManager.Run(): RuntimeError: New Style Mode: " + err);
                     return;
                 }
 
-                // EVENT HANDLER v3.0 -- all data in a single event
-                var slice = new Slice(algorithm.Time, newData.Values.SelectMany(x => x),
-                    newBars.Count == 0 ? null : newBars,
-                    newTicks.Count == 0 ? null : newTicks,
-                    newSplits.Count == 0 ? null : newSplits,
-                    newDividends.Count == 0 ? null : newDividends,
-                    newDelistings.Count == 0 ? null : newDelistings
-                    );
-
                 try
                 {
-                    algorithm.OnData(slice);
+                    if (timeSlice.Slice.HasData)
+                    {
+                        // EVENT HANDLER v3.0 -- all data in a single event
+                        algorithm.OnData(timeSlice.Slice);
+                    }
                 }
                 catch (Exception err)
                 {
                     algorithm.RunTimeError = err;
-                    _algorithmState = AlgorithmStatus.RuntimeError;
-                    Log.Error("AlgorithmManager.Run(): RuntimeError: Slice: " + err.Message + " STACK >>> " + err.StackTrace);
+                    _algorithm.Status = AlgorithmStatus.RuntimeError;
+                    Log.Error("AlgorithmManager.Run(): RuntimeError: Slice: " + err);
                     return;
                 }
 
@@ -551,9 +587,9 @@ namespace QuantConnect.Lean.Engine
             }
             catch (Exception err)
             {
-                _algorithmState = AlgorithmStatus.RuntimeError;
+                _algorithm.Status = AlgorithmStatus.RuntimeError;
                 algorithm.RunTimeError = new Exception("Error running OnEndOfAlgorithm(): " + err.Message, err.InnerException);
-                Log.Error("AlgorithmManager.OnEndOfAlgorithm(): " + err.Message + " STACK >>> " + err.StackTrace);
+                Log.Error("AlgorithmManager.OnEndOfAlgorithm(): " + err);
                 return;
             }
 
@@ -561,37 +597,38 @@ namespace QuantConnect.Lean.Engine
             results.ProcessSynchronousEvents(forceProcess: true);
 
             //Liquidate Holdings for Calculations:
-            if (_algorithmState == AlgorithmStatus.Liquidated && _liveMode)
+            if (_algorithm.Status == AlgorithmStatus.Liquidated && _liveMode)
             {
                 Log.Trace("AlgorithmManager.Run(): Liquidating algorithm holdings...");
                 algorithm.Liquidate();
                 results.LogMessage("Algorithm Liquidated");
-                results.SendStatusUpdate(job.AlgorithmId, AlgorithmStatus.Liquidated);
+                results.SendStatusUpdate(AlgorithmStatus.Liquidated);
             }
 
             //Manually stopped the algorithm
-            if (_algorithmState == AlgorithmStatus.Stopped)
+            if (_algorithm.Status == AlgorithmStatus.Stopped)
             {
                 Log.Trace("AlgorithmManager.Run(): Stopping algorithm...");
                 results.LogMessage("Algorithm Stopped");
-                results.SendStatusUpdate(job.AlgorithmId, AlgorithmStatus.Stopped);
+                results.SendStatusUpdate(AlgorithmStatus.Stopped);
             }
 
             //Backtest deleted.
-            if (_algorithmState == AlgorithmStatus.Deleted)
+            if (_algorithm.Status == AlgorithmStatus.Deleted)
             {
                 Log.Trace("AlgorithmManager.Run(): Deleting algorithm...");
                 results.DebugMessage("Algorithm Id:(" + job.AlgorithmId + ") Deleted by request.");
-                results.SendStatusUpdate(job.AlgorithmId, AlgorithmStatus.Deleted);
+                results.SendStatusUpdate(AlgorithmStatus.Deleted);
             }
 
             //Algorithm finished, send regardless of commands:
-            results.SendStatusUpdate(job.AlgorithmId, AlgorithmStatus.Completed);
+            results.SendStatusUpdate(AlgorithmStatus.Completed);
 
             //Take final samples:
             results.SampleRange(algorithm.GetChartUpdates());
             results.SampleEquity(_previousTime, Math.Round(algorithm.Portfolio.TotalPortfolioValue, 4));
-            results.SamplePerformance(_previousTime, Math.Round((algorithm.Portfolio.TotalPortfolioValue - startingPortfolioValue) * 100 / startingPortfolioValue, 10));
+            SampleBenchmark(algorithm, results, _previousTime);
+            results.SamplePerformance(_previousTime, Math.Round((algorithm.Portfolio.TotalPortfolioValue - portfolioValue)*100/portfolioValue, 10));
         } // End of Run();
 
         /// <summary>
@@ -605,8 +642,178 @@ namespace QuantConnect.Lean.Engine
                 //This is controlled by the algorithm private variable only.
                 if (state != AlgorithmStatus.Running)
                 {
-                    _algorithmState = state;
+                    _algorithm.Status = state;
                 }
+            }
+        }
+
+        private IEnumerable<TimeSlice> Stream(AlgorithmNodePacket job, IAlgorithm algorithm, IDataFeed feed, IResultHandler results, CancellationToken cancellationToken)
+        {
+            bool setStartTime = false;
+            var timeZone = algorithm.TimeZone;
+            var history = algorithm.HistoryProvider;
+
+            // get the required history job from the algorithm
+            DateTime? lastHistoryTimeUtc = null;
+            var historyRequests = algorithm.GetWarmupHistoryRequests().ToList();
+
+            // initialize variables for progress computation
+            var start = DateTime.UtcNow.Ticks;
+            var nextStatusTime = DateTime.UtcNow.AddSeconds(1);
+            var minimumIncrement = algorithm.UniverseManager
+                .Select(x => x.Value.Configuration.Resolution.ToTimeSpan())
+                .DefaultIfEmpty(Time.OneSecond)
+                .Min();
+
+            minimumIncrement = minimumIncrement == TimeSpan.Zero ? Time.OneSecond : minimumIncrement;
+
+            if (historyRequests.Count != 0)
+            {
+                // rewrite internal feed requests
+                var subscriptions = algorithm.SubscriptionManager.Subscriptions.Where(x => !x.IsInternalFeed).ToList();
+                var minResolution = subscriptions.Count > 0 ? subscriptions.Min(x => x.Resolution) : Resolution.Second;
+                foreach (var request in historyRequests)
+                {
+                    Security security;
+                    if (algorithm.Securities.TryGetValue(request.Symbol, out security) && security.SubscriptionDataConfig.IsInternalFeed)
+                    {
+                        if (request.Resolution < minResolution)
+                        {
+                            request.Resolution = minResolution;
+                            request.FillForwardResolution = request.FillForwardResolution.HasValue ? minResolution : (Resolution?) null;
+                        }
+                    }
+                }
+
+                // rewrite all to share the same fill forward resolution
+                if (historyRequests.Any(x => x.FillForwardResolution.HasValue))
+                {
+                    minResolution = historyRequests.Where(x => x.FillForwardResolution.HasValue).Min(x => x.FillForwardResolution.Value);
+                    foreach (var request in historyRequests.Where(x => x.FillForwardResolution.HasValue))
+                    {
+                        request.FillForwardResolution = minResolution;
+                    }
+                }
+
+                foreach (var request in historyRequests)
+                {
+                    start = Math.Min(request.StartTimeUtc.Ticks, start);
+                    Log.Trace(string.Format("AlgorithmManager.Stream(): WarmupHistoryRequest: {0}: Start: {1} End: {2} Resolution: {3}", request.Symbol, request.StartTimeUtc, request.EndTimeUtc, request.Resolution));
+                }
+
+                // make the history request and build time slices
+                foreach (var slice in history.GetHistory(historyRequests, timeZone))
+                {
+                    TimeSlice timeSlice;
+                    try
+                    {
+                        // we need to recombine this slice into a time slice
+                        var paired = new List<KeyValuePair<Security, List<BaseData>>>();
+                        foreach (var symbol in slice.Keys)
+                        {
+                            var security = algorithm.Securities[symbol];
+                            var data = slice[symbol];
+                            var list = new List<BaseData>();
+                            var ticks = data as List<Tick>;
+                            if (ticks != null) list.AddRange(ticks);
+                            else               list.Add(data);
+                            paired.Add(new KeyValuePair<Security, List<BaseData>>(security, list));
+                        }
+                        timeSlice = TimeSlice.Create(slice.Time.ConvertToUtc(timeZone), timeZone, algorithm.Portfolio.CashBook, paired, SecurityChanges.None);
+                    }
+                    catch (Exception err)
+                    {
+                        Log.Error(err);
+                        algorithm.RunTimeError = err;
+                        yield break;
+                    }
+
+                    if (timeSlice != null)
+                    {
+                        if (!setStartTime)
+                        {
+                            setStartTime = true;
+                            _previousTime = timeSlice.Time;
+                            algorithm.Debug("Algorithm warming up...");
+                        }
+                        if (DateTime.UtcNow > nextStatusTime)
+                        {
+                            // send some status to the user letting them know we're done history, but still warming up,
+                            // catching up to real time data
+                            nextStatusTime = DateTime.UtcNow.AddSeconds(1);
+                            var percent = (int)(100 * (timeSlice.Time.Ticks - start) / (double)(DateTime.UtcNow.Ticks - start));
+                            results.SendStatusUpdate(AlgorithmStatus.History, string.Format("Catching up to realtime {0}%...", percent));
+                        }
+                        yield return timeSlice;
+                        lastHistoryTimeUtc = timeSlice.Time;
+                    } 
+                }
+            }
+
+            // if we're not live or didn't event request warmup, then set us as not warming up
+            if (!algorithm.LiveMode || historyRequests.Count == 0)
+            {
+                algorithm.SetFinishedWarmingUp();
+                results.SendStatusUpdate(AlgorithmStatus.Running);
+                if (historyRequests.Count != 0)
+                {
+                    algorithm.Debug("Algorithm finished warming up.");
+                    Log.Trace("AlgorithmManager.Stream(): Finished warmup");
+                }
+            }
+
+            foreach (var timeSlice in feed)
+            {
+                if (!setStartTime)
+                {
+                    setStartTime = true;
+                    _previousTime = timeSlice.Time;
+                }
+                if (algorithm.LiveMode && algorithm.IsWarmingUp)
+                {
+                    // this is hand-over logic, we spin up the data feed first and then request
+                    // the history for warmup, so there will be some overlap between the data
+                    if (lastHistoryTimeUtc.HasValue)
+                    {
+                        // make sure there's no historical data, this only matters for the handover
+                        var hasHistoricalData = false;
+                        foreach (var data in timeSlice.Slice.Ticks.Values.SelectMany(x => x).Concat<BaseData>(timeSlice.Slice.Bars.Values))
+                        {
+                            // check if any ticks in the list are on or after our last warmup point, if so, skip this data
+                            if (data.EndTime.ConvertToUtc(algorithm.Securities[data.Symbol].Exchange.TimeZone) >= lastHistoryTimeUtc)
+                            {
+                                hasHistoricalData = true;
+                                break;
+                            }
+                        }
+                        if (hasHistoricalData)
+                        {
+                            continue;
+                        }
+                        
+                        // prevent us from doing these checks every loop
+                        lastHistoryTimeUtc = null;
+                    }
+
+                    // in live mode wait to mark us as finished warming up when
+                    // the data feed has caught up to now within the min increment
+                    if (timeSlice.Time > DateTime.UtcNow.Subtract(minimumIncrement))
+                    {
+                        algorithm.SetFinishedWarmingUp();
+                        results.SendStatusUpdate(AlgorithmStatus.Running);
+                        algorithm.Debug("Algorithm finished warming up.");
+                        Log.Trace("AlgorithmManager.Stream(): Finished warmup");
+                    }
+                    else if (DateTime.UtcNow > nextStatusTime)
+                    {
+                        // send some status to the user letting them know we're done history, but still warming up,
+                        // catching up to real time data
+                        nextStatusTime = DateTime.UtcNow.AddSeconds(1);
+                        var percent = (int) (100*(timeSlice.Time.Ticks - start)/(double) (DateTime.UtcNow.Ticks - start));
+                        results.SendStatusUpdate(AlgorithmStatus.History, string.Format("Catching up to realtime {0}%...", percent));   
+                    }
+                }
+                yield return timeSlice;
             }
         }
 
@@ -642,8 +849,9 @@ namespace QuantConnect.Lean.Engine
                 // submit an order to liquidate on market close
                 if (delisting.Type == DelistingType.Warning)
                 {
-                    Log.Trace("AlgorithmManager.Run(): Security delisting warning: " + delisting.Symbol);
+                    Log.Trace("AlgorithmManager.Run(): Security delisting warning: " + delisting.Symbol.ToString());
                     var security = algorithm.Securities[delisting.Symbol];
+                    if (security.Holdings.Quantity == 0) continue;
                     var submitOrderRequest = new SubmitOrderRequest(OrderType.MarketOnClose, security.Type, security.Symbol,
                         -security.Holdings.Quantity, 0, 0, algorithm.UtcTime, "Liquidate from delisting");
                     var ticket = algorithm.Transactions.ProcessRequest(submitOrderRequest);
@@ -652,12 +860,32 @@ namespace QuantConnect.Lean.Engine
                 }
                 else
                 {
-                    Log.Trace("AlgorithmManager.Run(): Security delisted: " + delisting.Symbol);
+                    Log.Trace("AlgorithmManager.Run(): Security delisted: " + delisting.Symbol.ToString());
                     algorithm.Securities.Remove(delisting.Symbol);
-                    Log.Trace("AlgorithmManager.Run(): Security removed: " + delisting.Symbol);
+                    Log.Trace("AlgorithmManager.Run(): Security removed: " + delisting.Symbol.ToString());
                 }
             }
         }
+
+        /// <summary>
+        /// Samples the benchmark in a  try/catch block
+        /// </summary>
+        private void SampleBenchmark(IAlgorithm algorithm, IResultHandler results, DateTime time)
+        {
+            try
+            {
+                // backtest mode, sample benchmark on day changes
+                results.SampleBenchmark(time, algorithm.Benchmark.Evaluate(time).SmartRounding());
+            }
+            catch (Exception err)
+            {
+                algorithm.RunTimeError = err;
+                _algorithm.Status = AlgorithmStatus.RuntimeError;
+                Log.Error(err);
+            }
+        }
+
+
     } // End of AlgorithmManager
 
 } // End of Namespace.

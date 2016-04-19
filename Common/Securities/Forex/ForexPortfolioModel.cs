@@ -36,7 +36,7 @@ namespace QuantConnect.Securities.Forex
 
             string baseCurrency;
             string quoteCurrency;
-            Forex.DecomposeCurrencyPair(security.Symbol, out baseCurrency, out quoteCurrency);
+            Forex.DecomposeCurrencyPair(security.Symbol.Value, out baseCurrency, out quoteCurrency);
 
             // e.g. EUR GBP
 
@@ -65,13 +65,13 @@ namespace QuantConnect.Securities.Forex
                 security.Holdings.AddNewSale(saleValue);
 
                 //Get the Fee for this Order - Update the Portfolio Cash Balance: Remove Transaction Fees.
-                var order = new MarketOrder(security.Symbol, fill.FillQuantity, security.LocalTime.ConvertToUtc(security.Exchange.TimeZone), type: security.Type){Price = fill.FillPrice, Status = OrderStatus.Filled};
-                var feeThisOrder = Math.Abs(security.TransactionModel.GetOrderFee(security, order));
+                var feeThisOrder = Math.Abs(fill.OrderFee);
                 security.Holdings.AddNewFee(feeThisOrder);
-                portfolio.CashBook[CashBook.AccountCurrency].Quantity -= feeThisOrder;
+                portfolio.CashBook[CashBook.AccountCurrency].AddAmount(-feeThisOrder);
 
-                baseCash.Quantity += fill.FillQuantity;
-                quoteCash.Quantity -= fill.FillQuantity*fill.FillPrice;
+                // Apply the funds using the current settlement model
+                security.SettlementModel.ApplyFunds(portfolio, security, fill.UtcTime, baseCurrency, fill.FillQuantity);
+                security.SettlementModel.ApplyFunds(portfolio, security, fill.UtcTime, quoteCurrency, -fill.FillQuantity * fill.FillPrice);
 
                 //Calculate & Update the Last Trade Profit;
                 if (isLong && fill.Direction == OrderDirection.Sell)
@@ -183,7 +183,7 @@ namespace QuantConnect.Securities.Forex
             }
             catch (Exception err)
             {
-                Log.Error("ForexPortfolioManager.ProcessFill(orderEvent): " + err.Message);
+                Log.Error(err);
             }
 
             //Set the results back to the vehicle.

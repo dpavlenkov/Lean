@@ -17,7 +17,6 @@ using System;
 using QuantConnect.Data.Market;
 using QuantConnect.Indicators;
 
-
 namespace QuantConnect.Algorithm.Examples
 {
     /// <summary>
@@ -50,7 +49,7 @@ namespace QuantConnect.Algorithm.Examples
         public void OnData(TradeBars data)
         {
             // only once per day
-            if (previous.Date == data.Time.Date) return;
+            if (previous.Date == Time.Date) return;
 
             if (!macd.IsReady) return;
 
@@ -76,7 +75,7 @@ namespace QuantConnect.Algorithm.Examples
             Plot(Symbol, "Open", data[Symbol].Open);
             Plot(Symbol, macd.Fast, macd.Slow);
 
-            previous = data.Time;
+            previous = Time;
         }
     }
 }

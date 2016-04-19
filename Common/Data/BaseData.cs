@@ -26,7 +26,7 @@ namespace QuantConnect.Data
     {
         private MarketDataType _dataType = MarketDataType.Base;
         private DateTime _time;
-        private string _symbol = string.Empty;
+        private Symbol _symbol = Symbol.Empty;
         private decimal _value;
         private bool _isFillForward;
 
@@ -81,9 +81,9 @@ namespace QuantConnect.Data
         }
         
         /// <summary>
-        /// String symbol representation for underlying Security
+        /// Symbol representation for underlying Security
         /// </summary>
-        public string Symbol
+        public Symbol Symbol
         {
             get
             {
@@ -132,7 +132,7 @@ namespace QuantConnect.Data
 
         /// <summary>
         /// Reader converts each line of the data source into BaseData objects. Each data type creates its own factory method, and returns a new instance of the object 
-        /// each time it is called. 
+        /// each time it is called. The returned object is assumed to be time stamped in the config.ExchangeTimeZone.
         /// </summary>
         /// <param name="config">Subscription data config setup object</param>
         /// <param name="line">Line of the source document</param>
@@ -143,7 +143,9 @@ namespace QuantConnect.Data
         {
             // stub implementation to prevent compile errors in user algorithms
             var dataFeed = isLiveMode ? DataFeedEndpoint.LiveTrading : DataFeedEndpoint.Backtesting;
+#pragma warning disable 618 // This implementation is left here for backwards compatibility of the BaseData API
             return Reader(config, line, date, dataFeed);
+#pragma warning restore 618
         }
 
         /// <summary>
@@ -157,7 +159,9 @@ namespace QuantConnect.Data
         {
             // stub implementation to prevent compile errors in user algorithms
             var dataFeed = isLiveMode ? DataFeedEndpoint.LiveTrading : DataFeedEndpoint.Backtesting;
+#pragma warning disable 618 // This implementation is left here for backwards compatibility of the BaseData API
             var source = GetSource(config, date, dataFeed);
+#pragma warning restore 618
 
             if (isLiveMode)
             {
@@ -177,13 +181,57 @@ namespace QuantConnect.Data
         }
 
         /// <summary>
+        /// Updates this base data with a new trade
+        /// </summary>
+        /// <param name="lastTrade">The price of the last trade</param>
+        /// <param name="tradeSize">The quantity traded</param>
+        public void UpdateTrade(decimal lastTrade, long tradeSize)
+        {
+            Update(lastTrade, 0, 0, tradeSize, 0, 0);
+        }
+
+        /// <summary>
+        /// Updates this base data with new quote information
+        /// </summary>
+        /// <param name="bidPrice">The current bid price</param>
+        /// <param name="bidSize">The current bid size</param>
+        /// <param name="askPrice">The current ask price</param>
+        /// <param name="askSize">The current ask size</param>
+        public void UpdateQuote(decimal bidPrice, long bidSize, decimal askPrice, long askSize)
+        {
+            Update(0, bidPrice, askPrice, 0, bidSize, askSize);
+        }
+
+        /// <summary>
+        /// Updates this base data with the new quote bid information
+        /// </summary>
+        /// <param name="bidPrice">The current bid price</param>
+        /// <param name="bidSize">The current bid size</param>
+        public void UpdateBid(decimal bidPrice, long bidSize)
+        {
+            Update(0, bidPrice, 0, 0, bidSize, 0);
+        }
+
+        /// <summary>
+        /// Updates this base data with the new quote ask information
+        /// </summary>
+        /// <param name="askPrice">The current ask price</param>
+        /// <param name="askSize">The current ask size</param>
+        public void UpdateAsk(decimal askPrice, long askSize)
+        {
+            Update(0, 0, askPrice, 0, 0, askSize);
+        }
+
+        /// <summary>
         /// Update routine to build a bar/tick from a data update. 
         /// </summary>
         /// <param name="lastTrade">The last trade price</param>
         /// <param name="bidPrice">Current bid price</param>
         /// <param name="askPrice">Current asking price</param>
         /// <param name="volume">Volume of this trade</param>
-        public virtual void Update(decimal lastTrade, decimal bidPrice, decimal askPrice, decimal volume)
+        /// <param name="bidSize">The size of the current bid, if available</param>
+        /// <param name="askSize">The size of the current ask, if available</param>
+        public virtual void Update(decimal lastTrade, decimal bidPrice, decimal askPrice, decimal volume, decimal bidSize, decimal askSize)
         {
             Value = lastTrade;
         }
@@ -212,7 +260,7 @@ namespace QuantConnect.Data
         /// <returns>A clone of the current object</returns>
         public virtual BaseData Clone()
         {
-            return ObjectActivator.Clone(this);
+            return (BaseData) ObjectActivator.Clone((object)this);
         }
 
         /// <summary>

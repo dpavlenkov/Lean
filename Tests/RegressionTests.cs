@@ -18,7 +18,7 @@ using NUnit.Framework;
 
 namespace QuantConnect.Tests
 {
-    [TestFixture, Ignore("Travis seems to have issues running this at the moment.")]
+    [TestFixture, Category("TravisExclude")]
     public class RegressionTests
     {
         [Test]
@@ -27,24 +27,24 @@ namespace QuantConnect.Tests
             AlgorithmRunner.RunLocalBacktest("BasicTemplateAlgorithm", new Dictionary<string, string>
             {
                 {"Total Trades", "1"},
-                {"Average Win", "3.33%"},
+                {"Average Win", "0%"},
                 {"Average Loss", "0%"},
-                {"Compounding Annual Return", "1546.436%"},
-                {"Drawdown", "3.000%"},
+                {"Compounding Annual Return", "264.956%"},
+                {"Drawdown", "1.500%"},
                 {"Expectancy", "0"},
-                {"Net Profit", "3.332%"},
-                {"Sharpe Ratio", "4.42"},
+                {"Net Profit", "0%"},
+                {"Sharpe Ratio", "4.411"},
                 {"Loss Rate", "0%"},
-                {"Win Rate", "100%"},
+                {"Win Rate", "0%"},
                 {"Profit-Loss Ratio", "0"},
-                {"Alpha", "-0.026"},
-                {"Beta", "2.025"},
-                {"Annual Standard Deviation", "0.388"},
-                {"Annual Variance", "0.151"},
-                {"Information Ratio", "4.353"},
-                {"Tracking Error", "0.197"},
-                {"Treynor Ratio", "0.848"},
-                {"Total Fees", "$12.30"}
+                {"Alpha", "0.752"},
+                {"Beta", "0.186"},
+                {"Annual Standard Deviation", "0.193"},
+                {"Annual Variance", "0.037"},
+                {"Information Ratio", "1.316"},
+                {"Tracking Error", "0.246"},
+                {"Treynor Ratio", "4.572"},
+                {"Total Fees", "$3.09"}
             });
         }
 
@@ -53,25 +53,25 @@ namespace QuantConnect.Tests
         {
             AlgorithmRunner.RunLocalBacktest("LimitFillRegressionAlgorithm", new Dictionary<string, string>
             {
-                {"Total Trades", "17"},
+                {"Total Trades", "35"},
                 {"Average Win", "0.02%"},
-                {"Average Loss", "-0.01%"},
-                {"Compounding Annual Return", "9.034%"},
+                {"Average Loss", "-0.02%"},
+                {"Compounding Annual Return", "8.265%"},
                 {"Drawdown", "0.200%"},
-                {"Expectancy", "0.450"},
-                {"Net Profit", "0.101%"},
-                {"Sharpe Ratio", "1.714"},
-                {"Loss Rate", "35%"},
-                {"Win Rate", "65%"},
-                {"Profit-Loss Ratio", "1.24"},
-                {"Alpha", "-0.081"},
-                {"Beta", "0.154"},
+                {"Expectancy", "0.447"},
+                {"Net Profit", "0.102%"},
+                {"Sharpe Ratio", "1.729"},
+                {"Loss Rate", "31%"},
+                {"Win Rate", "69%"},
+                {"Profit-Loss Ratio", "1.10"},
+                {"Alpha", "0.051"},
+                {"Beta", "0.002"},
                 {"Annual Standard Deviation", "0.03"},
                 {"Annual Variance", "0.001"},
-                {"Information Ratio", "-4.982"},
-                {"Tracking Error", "0.162"},
-                {"Treynor Ratio", "0.335"},
-                {"Total Fees", "$36.00"}
+                {"Information Ratio", "-2.454"},
+                {"Tracking Error", "0.194"},
+                {"Treynor Ratio", "28.639"},
+                {"Total Fees", "$35.00"}
             });
         }
 
@@ -80,52 +80,25 @@ namespace QuantConnect.Tests
         {
             AlgorithmRunner.RunLocalBacktest("UpdateOrderRegressionAlgorithm", new Dictionary<string, string>
             {
-                {"Total Trades", "5"},
-                {"Average Win", "0.01%"},
-                {"Average Loss", "-0.22%"},
-                {"Compounding Annual Return", "-0.386%"},
-                {"Drawdown", "1.100%"},
-                {"Expectancy", "-0.794"},
-                {"Net Profit", "-0.771%"},
-                {"Sharpe Ratio", "-0.88"},
-                {"Loss Rate", "80%"},
-                {"Win Rate", "20%"},
-                {"Profit-Loss Ratio", "0.03"},
-                {"Alpha", "-0.004"},
-                {"Beta", "0"},
-                {"Annual Standard Deviation", "0.004"},
-                {"Annual Variance", "0"},
-                {"Information Ratio", "-1.818"},
-                {"Tracking Error", "0.11"},
-                {"Treynor Ratio", "-11.909"},
-                {"Total Fees", "$11.05"}
-            });
-        }
-
-        [Test]
-        public void BasicTemplateFillForwardAlgorithm()
-        {
-            AlgorithmRunner.RunLocalBacktest("BasicTemplateFillForwardAlgorithm", new Dictionary<string, string>
-            {
-                {"Total Trades", "1"},
-                {"Average Win", "34.56%"},
-                {"Average Loss", "0%"},
-                {"Compounding Annual Return", "521.383%"},
-                {"Drawdown", "18.400%"},
-                {"Expectancy", "0"},
-                {"Net Profit", "34.562%"},
-                {"Sharpe Ratio", "2.599"},
-                {"Loss Rate", "0%"},
-                {"Win Rate", "100%"},
+                {"Total Trades", "21"},
+                {"Average Win", "0%"},
+                {"Average Loss", "-1.71%"},
+                {"Compounding Annual Return", "-8.289%"},
+                {"Drawdown", "16.700%"},
+                {"Expectancy", "-1"},
+                {"Net Profit", "-15.892%"},
+                {"Sharpe Ratio", "-1.225"},
+                {"Loss Rate", "100%"},
+                {"Win Rate", "0%"},
                 {"Profit-Loss Ratio", "0"},
-                {"Alpha", "0.899"},
-                {"Beta", "2.879"},
-                {"Annual Standard Deviation", "0.785"},
-                {"Annual Variance", "0.616"},
-                {"Information Ratio", "2.192"},
-                {"Tracking Error", "0.749"},
-                {"Treynor Ratio", "0.708"},
-                {"Total Fees", "$460.82"}
+                {"Alpha", "-0.076"},
+                {"Beta", "0.039"},
+                {"Annual Standard Deviation", "0.056"},
+                {"Annual Variance", "0.003"},
+                {"Information Ratio", "-2.167"},
+                {"Tracking Error", "0.112"},
+                {"Treynor Ratio", "-1.755"},
+                {"Total Fees", "$21.00"}
             });
         }
 
@@ -134,25 +107,187 @@ namespace QuantConnect.Tests
         {
             AlgorithmRunner.RunLocalBacktest("RegressionAlgorithm", new Dictionary<string, string>
             {
-                {"Total Trades", "2145"},
+                {"Total Trades", "5433"},
                 {"Average Win", "0.00%"},
                 {"Average Loss", "0.00%"},
-                {"Compounding Annual Return", "-3.361%"},
-                {"Drawdown", "0.000%"},
-                {"Expectancy", "-0.990"},
-                {"Net Profit", "-0.043%"},
-                {"Sharpe Ratio", "-28.984"},
+                {"Compounding Annual Return", "-3.886%"},
+                {"Drawdown", "0.100%"},
+                {"Expectancy", "-0.991"},
+                {"Net Profit", "-0.054%"},
+                {"Sharpe Ratio", "-30.336"},
                 {"Loss Rate", "100%"},
                 {"Win Rate", "0%"},
-                {"Profit-Loss Ratio", "1.65"},
-                {"Alpha", "-0.018"},
-                {"Beta", "0"},
+                {"Profit-Loss Ratio", "2.40"},
+                {"Alpha", "-0.023"},
+                {"Beta", "0.001"},
                 {"Annual Standard Deviation", "0.001"},
                 {"Annual Variance", "0"},
-                {"Information Ratio", "-4.251"},
-                {"Tracking Error", "0.173"},
-                {"Treynor Ratio", "611.111"},
-                {"Total Fees", "$4292.00"}
+                {"Information Ratio", "-4.203"},
+                {"Tracking Error", "0.174"},
+                {"Treynor Ratio", "-33.666"},
+                {"Total Fees", "$5433.00"}
+            });
+        }
+
+        [Test]
+        public void UniverseSelectionRegressionAlgorithm()
+        {
+            AlgorithmRunner.RunLocalBacktest("UniverseSelectionRegressionAlgorithm", new Dictionary<string, string>
+            {
+                {"Total Trades", "4"},
+                {"Average Win", "0.70%"},
+                {"Average Loss", "0%"},
+                {"Compounding Annual Return", "-56.034%"},
+                {"Drawdown", "3.800%"},
+                {"Expectancy", "0"},
+                {"Net Profit", "-3.755%"},
+                {"Sharpe Ratio", "-3.629"},
+                {"Loss Rate", "0%"},
+                {"Win Rate", "100%"},
+                {"Profit-Loss Ratio", "0"},
+                {"Alpha", "-0.643"},
+                {"Beta", "0.684"},
+                {"Annual Standard Deviation", "0.173"},
+                {"Annual Variance", "0.03"},
+                {"Information Ratio", "-3.927"},
+                {"Tracking Error", "0.166"},
+                {"Treynor Ratio", "-0.918"},
+                {"Total Fees", "$2.00"}
+            });
+        }
+
+        [Test]
+        public void CustomDataRegressionAlgorithm()
+        {
+            AlgorithmRunner.RunLocalBacktest("CustomDataRegressionAlgorithm", new Dictionary<string, string>
+            {
+                {"Total Trades", "1"},
+                {"Average Win", "0%"},
+                {"Average Loss", "0%"},
+                {"Compounding Annual Return", "155.200%"},
+                {"Drawdown", "99.900%"},
+                {"Expectancy", "0"},
+                {"Net Profit", "0%"},
+                {"Sharpe Ratio", "0.453"},
+                {"Loss Rate", "0%"},
+                {"Win Rate", "0%"},
+                {"Profit-Loss Ratio", "0"},
+                {"Alpha", "0"},
+                {"Beta", "0"},
+                {"Annual Standard Deviation", "118.922"},
+                {"Annual Variance", "14142.47"},
+                {"Information Ratio", "0"},
+                {"Tracking Error", "0"},
+                {"Treynor Ratio", "0"},
+                {"Total Fees", "$0.00"}
+            });
+        }
+
+        [Test]
+        public void AddRemoveSecurityRegressionAlgorithm()
+        {
+            AlgorithmRunner.RunLocalBacktest("AddRemoveSecurityRegressionAlgorithm", new Dictionary<string, string>
+            {
+                {"Total Trades", "5"},
+                {"Average Win", "0.49%"},
+                {"Average Loss", "0%"},
+                {"Compounding Annual Return", "307.953%"},
+                {"Drawdown", "0.800%"},
+                {"Expectancy", "0"},
+                {"Net Profit", "1.814%"},
+                {"Sharpe Ratio", "6.475"},
+                {"Loss Rate", "0%"},
+                {"Win Rate", "100%"},
+                {"Profit-Loss Ratio", "0"},
+                {"Alpha", "0.906"},
+                {"Beta", "0.018"},
+                {"Annual Standard Deviation", "0.141"},
+                {"Annual Variance", "0.02"},
+                {"Information Ratio", "1.649"},
+                {"Tracking Error", "0.236"},
+                {"Treynor Ratio", "50.468"},
+                {"Total Fees", "$25.21"}
+            });
+        }
+
+        [Test]
+        public void DropboxBaseDataUniverseSelectionAlgorithm()
+        {
+            AlgorithmRunner.RunLocalBacktest("DropboxBaseDataUniverseSelectionAlgorithm", new Dictionary<string, string>
+            {
+                {"Total Trades", "90"},
+                {"Average Win", "0.78%"},
+                {"Average Loss", "-0.40%"},
+                {"Compounding Annual Return", "18.606%"},
+                {"Drawdown", "4.700%"},
+                {"Expectancy", "1.068"},
+                {"Net Profit", "18.606%"},
+                {"Sharpe Ratio", "1.804"},
+                {"Loss Rate", "30%"},
+                {"Win Rate", "70%"},
+                {"Profit-Loss Ratio", "1.96"},
+                {"Alpha", "0"},
+                {"Beta", "0"},
+                {"Annual Standard Deviation", "0.078"},
+                {"Annual Variance", "0.006"},
+                {"Information Ratio", "0"},
+                {"Tracking Error", "0"},
+                {"Treynor Ratio", "0"},
+                {"Total Fees", "$240.52"}
+            });
+        }
+
+        [Test]
+        public void DropboxUniverseSelectionAlgorithm()
+        {
+            AlgorithmRunner.RunLocalBacktest("DropboxUniverseSelectionAlgorithm", new Dictionary<string, string>
+            {
+                {"Total Trades", "66"},
+                {"Average Win", "1.01%"},
+                {"Average Loss", "-0.50%"},
+                {"Compounding Annual Return", "18.591%"},
+                {"Drawdown", "7.100%"},
+                {"Expectancy", "0.785"},
+                {"Net Profit", "18.591%"},
+                {"Sharpe Ratio", "1.435"},
+                {"Loss Rate", "41%"},
+                {"Win Rate", "59%"},
+                {"Profit-Loss Ratio", "2.01"},
+                {"Alpha", "0"},
+                {"Beta", "0"},
+                {"Annual Standard Deviation", "0.1"},
+                {"Annual Variance", "0.01"},
+                {"Information Ratio", "0"},
+                {"Tracking Error", "0"},
+                {"Treynor Ratio", "0"},
+                {"Total Fees", "$185.60"}
+            });
+        }
+
+        [Test]
+        public void ParameterizedAlgorithm()
+        {
+            AlgorithmRunner.RunLocalBacktest("ParameterizedAlgorithm", new Dictionary<string, string>
+            {
+                {"Total Trades", "1"},
+                {"Average Win", "0%"},
+                {"Average Loss", "0%"},
+                {"Compounding Annual Return", "278.616%"},
+                {"Drawdown", "0.200%"},
+                {"Expectancy", "0"},
+                {"Net Profit", "0%"},
+                {"Sharpe Ratio", "11.017"},
+                {"Loss Rate", "0%"},
+                {"Win Rate", "0%"},
+                {"Profit-Loss Ratio", "0"},
+                {"Alpha", "0.764"},
+                {"Beta", "0.186"},
+                {"Annual Standard Deviation", "0.078"},
+                {"Annual Variance", "0.006"},
+                {"Information Ratio", "1.957"},
+                {"Tracking Error", "0.171"},
+                {"Treynor Ratio", "4.634"},
+                {"Total Fees", "$3.09"}
             });
         }
     }

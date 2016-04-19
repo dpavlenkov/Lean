@@ -17,6 +17,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using QuantConnect.Brokerages.Tradier;
@@ -33,10 +34,10 @@ namespace QuantConnect.Tests.Brokerages.Tradier
         /// Creates the brokerage under test
         /// </summary>
         /// <returns>A connected brokerage instance</returns>
-        protected override IBrokerage CreateBrokerage(IOrderProvider orderProvider, IHoldingsProvider holdingsProvider)
+        protected override IBrokerage CreateBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider)
         {
             var accountID = TradierBrokerageFactory.Configuration.AccountID;
-            var tradier = new TradierBrokerage(orderProvider, holdingsProvider, accountID);
+            var tradier = new TradierBrokerage(orderProvider, securityProvider, accountID);
 
             var qcUserID = TradierBrokerageFactory.Configuration.QuantConnectUserID;
             var tokens = TradierBrokerageFactory.GetTokens();
@@ -54,9 +55,9 @@ namespace QuantConnect.Tests.Brokerages.Tradier
         /// <summary>
         /// Gets the symbol to be traded, must be shortable
         /// </summary>
-        protected override string Symbol
+        protected override Symbol Symbol
         {
-            get { return "AAPL"; }
+            get { return Symbols.AAPL; }
         }
 
         /// <summary>
@@ -86,10 +87,10 @@ namespace QuantConnect.Tests.Brokerages.Tradier
         /// <summary>
         /// Gets the current market price of the specified security
         /// </summary>
-        protected override decimal GetAskPrice(string symbol, SecurityType securityType)
+        protected override decimal GetAskPrice(Symbol symbol)
         {
             var tradier = (TradierBrokerage) Brokerage;
-            var quotes = tradier.GetQuotes(new List<string> {symbol});
+            var quotes = tradier.GetQuotes(new List<string> {symbol.Value});
             return quotes.Single().Ask;
         }
 
@@ -125,10 +126,10 @@ namespace QuantConnect.Tests.Brokerages.Tradier
         [Test, Ignore("This test exists to manually verify how rejected orders are handled when we don't receive an order ID back from Tradier.")]
         public void ShortZnga()
         {
-            PlaceOrderWaitForStatus(new MarketOrder("ZNGA", -1, DateTime.Now, type: SecurityType.Equity), OrderStatus.Invalid, allowFailedSubmission: true);
+            PlaceOrderWaitForStatus(new MarketOrder(Symbols.ZNGA, -1, DateTime.Now, type: SecurityType.Equity), OrderStatus.Invalid, allowFailedSubmission: true);
 
             // wait for output to be generated
-            System.Threading.Thread.Sleep(20*1000);
+            Thread.Sleep(20*1000);
         }
     }
 }

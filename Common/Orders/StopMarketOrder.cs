@@ -36,14 +36,6 @@ namespace QuantConnect.Orders
         }
 
         /// <summary>
-        /// Value of the order at stop price
-        /// </summary>
-        public override decimal Value
-        {
-            get { return Quantity*StopPrice; }
-        }
-
-        /// <summary>
         /// Default constructor for JSON Deserialization:
         /// </summary>
         public StopMarketOrder()
@@ -59,7 +51,7 @@ namespace QuantConnect.Orders
         /// <param name="time">Time the order was placed</param>
         /// <param name="stopPrice">Price the order should be filled at if a limit order</param>
         /// <param name="tag">User defined data tag for this order</param>
-        public StopMarketOrder(string symbol, int quantity, decimal stopPrice, DateTime time, string tag = "", SecurityType type = SecurityType.Base)
+        public StopMarketOrder(Symbol symbol, int quantity, decimal stopPrice, DateTime time, string tag = "", SecurityType type = SecurityType.Base)
             : base(symbol, quantity, time, tag, type)
         {
             StopPrice = stopPrice;
@@ -78,7 +70,19 @@ namespace QuantConnect.Orders
         /// <returns>The value of this order given the current market price</returns>
         public override decimal GetValue(decimal currentMarketPrice)
         {
-            return Quantity*StopPrice;
+            // selling, so higher price will be used
+            if (Quantity < 0)
+            {
+                return Math.Max(StopPrice, currentMarketPrice);
+            }
+
+            // buying, so lower price will be used
+            if (Quantity > 0)
+            {
+                return Math.Min(StopPrice, currentMarketPrice);
+            }
+
+            return 0m;
         }
 
         /// <summary>

@@ -14,14 +14,19 @@
 */
 
 using System;
-using System.IO;
-using System.Text;
-using System.Collections.Generic;
-using System.Security.Cryptography;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Globalization;
-using System.Timers;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using Newtonsoft.Json;
 using NodaTime;
+using QuantConnect.Data;
+using QuantConnect.Securities;
+using Timer = System.Timers.Timer;
 
 namespace QuantConnect 
 {
@@ -229,6 +234,39 @@ namespace QuantConnect
         }
 
         /// <summary>
+        /// Breaks the specified string into csv components, all commas are considered separators
+        /// </summary>
+        /// <param name="str">The string to be broken into csv</param>
+        /// <param name="size">The expected size of the output list</param>
+        /// <returns>A list of the csv pieces</returns>
+        public static List<string> ToCsv(this string str, int size = 4)
+        {
+            int last = 0;
+            var csv = new List<string>(size);
+            for (int i = 0; i < str.Length; i++)
+            {
+                if (str[i] == ',')
+                {
+                    if (last != 0) last = last + 1;
+                    csv.Add(str.Substring(last, i - last));
+                    last = i;
+                }
+            }
+            if (last != 0) last = last + 1;
+            csv.Add(str.Substring(last));
+            return csv;
+        }
+
+        /// <summary>
+        /// Check if a number is NaN or equal to zero
+        /// </summary>
+        /// <param name="value">The double value to check</param>
+        public static bool IsNaNOrZero(this double value)
+        {
+            return double.IsNaN(value) || Math.Abs(value) < double.Epsilon;
+        }
+
+        /// <summary>
         /// Gets the smallest positive number that can be added to a decimal instance and return
         /// a new value that does not == the old value
         /// </summary>
@@ -319,6 +357,31 @@ namespace QuantConnect
         }
 
         /// <summary>
+        /// Extension method to round a datetime down by a timespan interval until it's
+        /// within the specified exchange's open hours. This works by first rounding down
+        /// the specified time using the interval, then producing a bar between that
+        /// rounded time and the interval plus the rounded time and incrementally walking
+        /// backwards until the exchange is open
+        /// </summary>
+        /// <param name="dateTime">Time to be rounded down</param>
+        /// <param name="interval">Timespan interval to round to.</param>
+        /// <param name="exchangeHours">The exchange hours to determine open times</param>
+        /// <param name="extendedMarket">True for extended market hours, otherwise false</param>
+        /// <returns>Rounded datetime</returns>
+        public static DateTime ExchangeRoundDown(this DateTime dateTime, TimeSpan interval, SecurityExchangeHours exchangeHours, bool extendedMarket)
+        {
+            // can't round against a zero interval
+            if (interval == TimeSpan.Zero) return dateTime;
+
+            var rounded = dateTime.RoundDown(interval);
+            while (!exchangeHours.IsOpen(rounded, rounded + interval, extendedMarket))
+            {
+                rounded -= interval;
+            }
+            return rounded;
+        }
+
+        /// <summary>
         /// Extension method to round a datetime to the nearest unit timespan.
         /// </summary>
         /// <param name="datetime">Datetime object we're rounding.</param>
@@ -355,12 +418,26 @@ namespace QuantConnect
         /// <returns>The time in terms of the to time zone</returns>
         public static DateTime ConvertTo(this DateTime time, DateTimeZone from, DateTimeZone to, bool strict = false)
         {
+            if (ReferenceEquals(from, to)) return time;
+
             if (strict)
             {
                 return from.AtStrictly(LocalDateTime.FromDateTime(time)).WithZone(to).ToDateTimeUnspecified();
             }
             
-            return @from.AtLeniently(LocalDateTime.FromDateTime(time)).WithZone(to).ToDateTimeUnspecified();
+            return from.AtLeniently(LocalDateTime.FromDateTime(time)).WithZone(to).ToDateTimeUnspecified();
+        }
+
+        /// <summary>
+        /// Converts the specified time from UTC to the <paramref name="to"/> time zone
+        /// </summary>
+        /// <param name="time">The time to be converted expressed in UTC</param>
+        /// <param name="to">The destinatio time zone</param>
+        /// <param name="strict">True for strict conversion, this will throw during ambiguitities, false for lenient conversion</param>
+        /// <returns>The time in terms of the <paramref name="to"/> time zone</returns>
+        public static DateTime ConvertFromUtc(this DateTime time, DateTimeZone to, bool strict = false)
+        {
+            return time.ConvertTo(TimeZones.Utc, to, strict);
         }
 
         /// <summary>
@@ -372,7 +449,12 @@ namespace QuantConnect
         /// <returns>The time in terms of the to time zone</returns>
         public static DateTime ConvertToUtc(this DateTime time, DateTimeZone from, bool strict = false)
         {
-            return ConvertTo(time, from, TimeZones.Utc, strict);
+            if (strict)
+            {
+                return from.AtStrictly(LocalDateTime.FromDateTime(time)).ToDateTimeUtc();
+            }
+
+            return from.AtLeniently(LocalDateTime.FromDateTime(time)).ToDateTimeUtc();
         }
 
         /// <summary>
@@ -450,11 +532,8 @@ namespace QuantConnect
             if (type.IsGenericType)
             {
                 var genericArguments = type.GetGenericArguments();
-                for (int i = 0; i < genericArguments.Length; i++)
-                {
-                    string toBeReplaced = "`" + (i + 1);
-                    name = name.Replace(toBeReplaced, genericArguments[i].GetBetterTypeName());
-                }
+                var toBeReplaced = "`" + (genericArguments.Length);
+                name = name.Replace(toBeReplaced, "<" + string.Join(", ", genericArguments.Select(x => x.GetBetterTypeName())) + ">");
             }
             return name;
         }
@@ -492,21 +571,99 @@ namespace QuantConnect
         /// <returns>The converted value</returns>
         public static T ConvertTo<T>(this string value)
         {
-            var conversionType = typeof (T);
-            if (conversionType.IsEnum)
+            return (T) value.ConvertTo(typeof (T));
+        }
+
+        /// <summary>
+        /// Converts the specified string value into the specified type
+        /// </summary>
+        /// <param name="value">The string value to be converted</param>
+        /// <param name="type">The output type</param>
+        /// <returns>The converted value</returns>
+        public static object ConvertTo(this string value, Type type)
+        {
+            if (type.IsEnum)
             {
-                return (T) Enum.Parse(conversionType, value);
-            }
-            if (typeof (IConvertible).IsAssignableFrom(conversionType))
-            {
-                return (T)Convert.ChangeType(value, conversionType, CultureInfo.InvariantCulture);
-            }
-            if (typeof (TimeSpan) == conversionType)
-            {
-                return (T)(object)TimeSpan.Parse(value, CultureInfo.InvariantCulture);
+                return Enum.Parse(type, value);
             }
 
-            throw new ArgumentException("Extensions.ConvertTo is unable to convert to type: " + typeof (T).Name);
+            if (typeof (IConvertible).IsAssignableFrom(type))
+            {
+                return Convert.ChangeType(value, type, CultureInfo.InvariantCulture);
+            }
+
+            // try and find a static parse method
+            var parse = type.GetMethod("Parse", new[] {typeof (string)});
+            if (parse != null)
+            {
+                var result = parse.Invoke(null, new object[] {value});
+                return result;
+            }
+
+            return JsonConvert.DeserializeObject(value, type);
+        }
+
+        /// <summary>
+        /// Blocks the current thread until the current <see cref="T:System.Threading.WaitHandle"/> receives a signal, while observing a <see cref="T:System.Threading.CancellationToken"/>.
+        /// </summary>
+        /// <param name="waitHandle">The wait handle to wait on</param>
+        /// <param name="cancellationToken">The <see cref="T:System.Threading.CancellationToken"/> to observe.</param>
+        /// <exception cref="T:System.InvalidOperationException">The maximum number of waiters has been exceeded.</exception>
+        /// <exception cref="T:System.OperationCanceledExcepton"><paramref name="cancellationToken"/> was canceled.</exception>
+        /// <exception cref="T:System.ObjectDisposedException">The object has already been disposed or the <see cref="T:System.Threading.CancellationTokenSource"/> that created <paramref name="cancellationToken"/> has been disposed.</exception>
+        public static bool WaitOne(this WaitHandle waitHandle, CancellationToken cancellationToken)
+        {
+            return waitHandle.WaitOne(Timeout.Infinite, cancellationToken);
+        }
+
+        /// <summary>
+        /// Blocks the current thread until the current <see cref="T:System.Threading.WaitHandle"/> is set, using a <see cref="T:System.TimeSpan"/> to measure the time interval, while observing a <see cref="T:System.Threading.CancellationToken"/>.
+        /// </summary>
+        /// 
+        /// <returns>
+        /// true if the <see cref="T:System.Threading.WaitHandle"/> was set; otherwise, false.
+        /// </returns>
+        /// <param name="waitHandle">The wait handle to wait on</param>
+        /// <param name="timeout">A <see cref="T:System.TimeSpan"/> that represents the number of milliseconds to wait, or a <see cref="T:System.TimeSpan"/> that represents -1 milliseconds to wait indefinitely.</param>
+        /// <param name="cancellationToken">The <see cref="T:System.Threading.CancellationToken"/> to observe.</param>
+        /// <exception cref="T:System.Threading.OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+        /// <exception cref="T:System.ArgumentOutOfRangeException"><paramref name="timeout"/> is a negative number other than -1 milliseconds, which represents an infinite time-out -or- timeout is greater than <see cref="F:System.Int32.MaxValue"/>.</exception>
+        /// <exception cref="T:System.InvalidOperationException">The maximum number of waiters has been exceeded. </exception><exception cref="T:System.ObjectDisposedException">The object has already been disposed or the <see cref="T:System.Threading.CancellationTokenSource"/> that created <paramref name="cancellationToken"/> has been disposed.</exception>
+        public static bool WaitOne(this WaitHandle waitHandle, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            return waitHandle.WaitOne((int) timeout.TotalMilliseconds, cancellationToken);
+        }
+
+        /// <summary>
+        /// Blocks the current thread until the current <see cref="T:System.Threading.WaitHandle"/> is set, using a 32-bit signed integer to measure the time interval, while observing a <see cref="T:System.Threading.CancellationToken"/>.
+        /// </summary>
+        /// 
+        /// <returns>
+        /// true if the <see cref="T:System.Threading.WaitHandle"/> was set; otherwise, false.
+        /// </returns>
+        /// <param name="waitHandle">The wait handle to wait on</param>
+        /// <param name="millisecondsTimeout">The number of milliseconds to wait, or <see cref="F:System.Threading.Timeout.Infinite"/>(-1) to wait indefinitely.</param>
+        /// <param name="cancellationToken">The <see cref="T:System.Threading.CancellationToken"/> to observe.</param>
+        /// <exception cref="T:System.Threading.OperationCanceledException"><paramref name="cancellationToken"/> was canceled.</exception>
+        /// <exception cref="T:System.ArgumentOutOfRangeException"><paramref name="millisecondsTimeout"/> is a negative number other than -1, which represents an infinite time-out.</exception>
+        /// <exception cref="T:System.InvalidOperationException">The maximum number of waiters has been exceeded.</exception>
+        /// <exception cref="T:System.ObjectDisposedException">The object has already been disposed or the <see cref="T:System.Threading.CancellationTokenSource"/> that created <paramref name="cancellationToken"/> has been disposed.</exception>
+        public static bool WaitOne(this WaitHandle waitHandle, int millisecondsTimeout, CancellationToken cancellationToken)
+        {
+            return WaitHandle.WaitAny(new[] { waitHandle, cancellationToken.WaitHandle }, millisecondsTimeout) == 0;
+        }
+
+        /// <summary>
+        /// Gets the MD5 hash from a stream
+        /// </summary>
+        /// <param name="stream">The stream to compute a hash for</param>
+        /// <returns>The MD5 hash</returns>
+        public static byte[] GetMD5Hash(this Stream stream)
+        {
+            using (var md5 = MD5.Create())
+            {
+                return md5.ComputeHash(stream);
+            }
         }
     }
 }

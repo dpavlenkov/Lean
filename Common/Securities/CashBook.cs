@@ -54,18 +54,6 @@ namespace QuantConnect.Securities
         }
 
         /// <summary>
-        /// Update the current conversion rate for each cash type
-        /// </summary>
-        /// <param name="data">The new, current data</param>
-        public void Update(Dictionary<int, List<BaseData>> data)
-        {
-            foreach (var cash in _currencies.Values)
-            {
-                cash.Update(data);
-            }
-        }
-
-        /// <summary>
         /// Adds a new cash of the specified symbol and quantity
         /// </summary>
         /// <param name="symbol">The symbol used to reference the new cash</param>
@@ -83,13 +71,20 @@ namespace QuantConnect.Securities
         /// </summary>
         /// <param name="securities">The SecurityManager for the algorithm</param>
         /// <param name="subscriptions">The SubscriptionManager for the algorithm</param>
-        /// <param name="exchangeHoursProvider">A security exchange hours provider instance used to resolve exchange hours for new subscriptions</param>
-        public void EnsureCurrencyDataFeeds(SecurityManager securities, SubscriptionManager subscriptions, SecurityExchangeHoursProvider exchangeHoursProvider)
+        /// <param name="marketHoursDatabase">A security exchange hours provider instance used to resolve exchange hours for new subscriptions</param>
+        /// <returns>Returns a list of added currency securities</returns>
+        public List<Security> EnsureCurrencyDataFeeds(SecurityManager securities, SubscriptionManager subscriptions, MarketHoursDatabase marketHoursDatabase)
         {
+            var addedSecurities = new List<Security>();
             foreach (var cash in _currencies.Values)
             {
-                cash.EnsureCurrencyDataFeed(securities, subscriptions, exchangeHoursProvider);
+                var security = cash.EnsureCurrencyDataFeed(securities, subscriptions, marketHoursDatabase);
+                if (security != null)
+                {
+                    addedSecurities.Add(security);
+                }
             }
+            return addedSecurities;
         }
 
         /// <summary>
@@ -128,7 +123,7 @@ namespace QuantConnect.Securities
         public override string ToString()
         {
             var sb = new StringBuilder();
-            sb.AppendLine(string.Format("{0} {1,7}    {2,10} = {3}", "Symbol", "Quantity", "Conversion", "Value in " + CashBook.AccountCurrency));
+            sb.AppendLine(string.Format("{0} {1,7}    {2,10} = {3}", "Symbol", "Quantity", "Conversion", "Value in " + AccountCurrency));
             foreach (var value in Values)
             {
                 sb.AppendLine(value.ToString());

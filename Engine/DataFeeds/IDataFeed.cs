@@ -14,13 +14,14 @@
  *
 */
 
-using System.Collections.Concurrent;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
-using QuantConnect.Data;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 using QuantConnect.Lean.Engine.Results;
 using QuantConnect.Packets;
+using QuantConnect.Securities;
 
 namespace QuantConnect.Lean.Engine.DataFeeds
 {
@@ -28,29 +29,12 @@ namespace QuantConnect.Lean.Engine.DataFeeds
     /// Datafeed interface for creating custom datafeed sources.
     /// </summary>
     [InheritedExport(typeof(IDataFeed))]
-    public interface IDataFeed
+    public interface IDataFeed : IEnumerable<TimeSlice>
     {
         /// <summary>
-        /// List of the subscription the algorithm has requested. Subscriptions contain the type, sourcing information and manage the enumeration of data.
+        /// Gets all of the current subscriptions this data feed is processing
         /// </summary>
-        List<SubscriptionDataConfig> Subscriptions
-        {
-            get;
-        }
-
-        /// <summary>
-        /// Prices of the datafeed this instant for dynamically updating security values (and calculation of the total portfolio value in realtime).
-        /// </summary>
-        /// <remarks>Indexed in order of the subscriptions</remarks>
-        List<decimal> RealtimePrices
-        {
-            get;
-        }
-
-        /// <summary>
-        /// Cross-threading queue so the datafeed pushes data into the queue and the primary algorithm thread reads it out.
-        /// </summary>
-        BlockingCollection<TimeSlice> Bridge
+        IEnumerable<Subscription> Subscriptions
         {
             get;
         }
@@ -64,17 +48,26 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         }
 
         /// <summary>
-        /// Data has completely loaded and we don't expect any more.
-        /// </summary>
-        bool LoadingComplete
-        {
-            get;
-        }
-
-        /// <summary>
         /// Initializes the data feed for the specified job and algorithm
         /// </summary>
-        void Initialize(IAlgorithm algorithm, AlgorithmNodePacket job, IResultHandler resultHandler);
+        void Initialize(IAlgorithm algorithm, AlgorithmNodePacket job, IResultHandler resultHandler, IMapFileProvider mapFileProvider, IFactorFileProvider factorFileProvider);
+
+        /// <summary>
+        /// Adds a new subscription to provide data for the specified security.
+        /// </summary>
+        /// <param name="universe">The universe the subscription is to be added to</param>
+        /// <param name="security">The security to add a subscription for</param>
+        /// <param name="utcStartTime">The start time of the subscription</param>
+        /// <param name="utcEndTime">The end time of the subscription</param>
+        /// <returns>True if the subscription was created and added successfully, false otherwise</returns>
+        bool AddSubscription(Universe universe, Security security, DateTime utcStartTime, DateTime utcEndTime);
+
+        /// <summary>
+        /// Removes the subscription from the data feed, if it exists
+        /// </summary>
+        /// <param name="subscription">The subscription to be removed</param>
+        /// <returns>True if the subscription was successfully removed, false otherwise</returns>
+        bool RemoveSubscription(Subscription subscription);
 
         /// <summary>
         /// Primary entry point.

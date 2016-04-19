@@ -15,7 +15,9 @@
 
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 using NUnit.Framework;
+using QuantConnect.Securities;
 
 namespace QuantConnect.Tests.Common.Util
 {
@@ -51,32 +53,22 @@ namespace QuantConnect.Tests.Common.Util
         }
 
         [Test]
-        public void ConvertsTimeSpanFromString()
-        {
-            const string input = "16:00";
-            var timespan = input.ConvertTo<TimeSpan>();
-            Assert.AreEqual(TimeSpan.FromHours(16), timespan);
-        }
-
-        [Test]
         public void GetBetterTypeNameHandlesRecursiveGenericTypes()
         {
             var type = typeof (Dictionary<List<int>, Dictionary<int, string>>);
-            const string expected = "Dictionary<List<System.Int32>, Dictionary<System.Int32, System.String>>";
+            const string expected = "Dictionary<List<Int32>, Dictionary<Int32, String>>";
             var actual = type.GetBetterTypeName();
-            Assert.AreNotEqual(expected, actual);
+            Assert.AreEqual(expected, actual);
         }
 
-        private class Super<T>
+        [Test]
+        public void ExchangeRoundDownSkipsWeekends()
         {
-        }
-
-        private class Derived1 : Super<int>
-        {
-        }
-
-        private class Derived2 : Derived1
-        {
+            var time = new DateTime(2015, 05, 02, 18, 01, 00);
+            var expected = new DateTime(2015, 05, 01);
+            var hours = MarketHoursDatabase.FromDataFolder().GetExchangeHours(Market.FXCM, null, SecurityType.Forex);
+            var exchangeRounded = time.ExchangeRoundDown(Time.OneDay, hours, false);
+            Assert.AreEqual(expected, exchangeRounded);
         }
 
         [Test]
@@ -119,5 +111,33 @@ namespace QuantConnect.Tests.Common.Util
             Assert.AreEqual(1.45678m, value);
         }
 
+        [Test]
+        public void ConvertsTimeSpanFromString()
+        {
+            const string input = "16:00";
+            var timespan = input.ConvertTo<TimeSpan>();
+            Assert.AreEqual(TimeSpan.FromHours(16), timespan);
+        }
+
+        [Test]
+        public void ConvertsDictionaryFromString()
+        {
+            var expected = new Dictionary<string, int> {{"a", 1}, {"b", 2}};
+            var input = JsonConvert.SerializeObject(expected);
+            var actual = input.ConvertTo<Dictionary<string, int>>();
+            CollectionAssert.AreEqual(expected, actual);
+        }
+
+        private class Super<T>
+        {
+        }
+
+        private class Derived1 : Super<int>
+        {
+        }
+
+        private class Derived2 : Derived1
+        {
+        }
     }
 }

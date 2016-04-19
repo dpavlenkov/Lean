@@ -16,6 +16,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using QuantConnect.Logging;
 
@@ -96,7 +99,15 @@ namespace QuantConnect.Configuration
                 Log.Trace(string.Format("Config.Get(): Configuration key not found. Key: {0} - Using default value: {1}", key, defaultValue));
                 return defaultValue;
             }
-            return token.Value<string>();
+            return token.ToString();
+        }
+
+        /// <summary>
+        /// Gets the underlying JToken for the specified key
+        /// </summary>
+        public static JToken GetToken(string key)
+        {
+            return GetToken(Settings.Value, key);
         }
 
         /// <summary>
@@ -112,7 +123,12 @@ namespace QuantConnect.Configuration
             {
                 var envName = key.Substring(0, key.IndexOf("."));
                 key = key.Substring(key.IndexOf(".") + 1);
-                environment = environment["environments"][envName];
+                var environments = environment["environments"];
+                if (environments == null)
+                {
+                    environment["environments"] = environments = new JObject();
+                }
+                environment = environments[envName];
             }
             environment[key] = value;
         }
@@ -159,7 +175,6 @@ namespace QuantConnect.Configuration
         /// <param name="defaultValue">The default value to use if not found in configuration</param>
         /// <returns>Converted value of the config setting.</returns>
         public static T GetValue<T>(string key, T defaultValue = default(T))
-            where T : IConvertible
         {
             // special case environment requests
             if (key == "environment" && typeof (T) == typeof (string)) return (T) (object) GetEnvironment();
@@ -172,12 +187,154 @@ namespace QuantConnect.Configuration
             }
 
             var type = typeof(T);
-            var value = token.Value<string>();
+            string value;
+            try
+            {
+                value = token.Value<string>();
+            }
+            catch (Exception err)
+            {
+                value = token.ToString();
+            }
+
             if (type.IsEnum)
             {
                 return (T) Enum.Parse(type, value);
             }
-            return (T) Convert.ChangeType(value, type);
+
+            if (typeof(IConvertible).IsAssignableFrom(type))
+            {
+                return (T) Convert.ChangeType(value, type);
+            }
+
+            // try and find a static parse method
+            try
+            {
+                var parse = type.GetMethod("Parse", new[]{typeof(string)});
+                if (parse != null)
+                {
+                    var result = parse.Invoke(null, new object[] {value});
+                    return (T) result;
+                }
+            }
+            catch (Exception err)
+            {
+                Log.Trace("Config.GetValue<{0}>({1},{2}): Failed to parse: {3}. Using default value.", typeof (T).Name, key, defaultValue, value);
+                Log.Error(err);
+                return defaultValue;
+            }
+
+            try
+            {
+                return JsonConvert.DeserializeObject<T>(value);
+            }
+            catch (Exception err)
+            {
+                Log.Trace("Config.GetValue<{0}>({1},{2}): Failed to JSON deserialize: {3}. Using default value.", typeof(T).Name, key, defaultValue, value);
+                Log.Error(err);
+                return defaultValue;
+            }
+        }
+
+        /// <summary>
+        /// Tries to find the specified key and parse it as a T, using
+        /// default(T) if unable to locate the key or unable to parse it
+        /// </summary>
+        /// <typeparam name="T">The desired output type</typeparam>
+        /// <param name="key">The configuration key</param>
+        /// <param name="value">The output value</param>
+        /// <returns>True on successful parse, false when output value is default(T)</returns>
+        public static bool TryGetValue<T>(string key, out T value)
+        {
+            return TryGetValue(key, default(T), out value);
+        }
+
+        /// <summary>
+        /// Tries to find the specified key and parse it as a T, using
+        /// defaultValue if unable to locate the key or unable to parse it
+        /// </summary>
+        /// <typeparam name="T">The desired output type</typeparam>
+        /// <param name="key">The configuration key</param>
+        /// <param name="defaultValue">The default value to use on key not found or unsuccessful parse</param>
+        /// <param name="value">The output value</param>
+        /// <returns>True on successful parse, false when output value is defaultValue</returns>
+        public static bool TryGetValue<T>(string key, T defaultValue, out T value)
+        {
+            try
+            {
+                value = GetValue(key, defaultValue);
+                return true;
+            }
+            catch
+            {
+                value = defaultValue;
+                return false;
+            }
+        }
+
+
+        /// <summary>
+        /// Flattens the jobject with respect to the selected environment and then
+        /// removes the 'environments' node
+        /// </summary>
+        /// <param name="overrideEnvironment">The environment to use</param>
+        /// <returns>The flattened JObject</returns>
+        public static JObject Flatten(string overrideEnvironment)
+        {
+            return Flatten(Settings.Value, overrideEnvironment);
+        }
+
+        /// <summary>
+        /// Flattens the jobject with respect to the selected environment and then
+        /// removes the 'environments' node
+        /// </summary>
+        /// <param name="config">The configuration represented as a JObject</param>
+        /// <param name="overrideEnvironment">The environment to use</param>
+        /// <returns>The flattened JObject</returns>
+        public static JObject Flatten(JObject config, string overrideEnvironment)
+        {
+            var clone = (JObject)config.DeepClone();
+
+            // remove the environment declaration
+            var environmentProperty = clone.Property("environment");
+            if (environmentProperty != null) environmentProperty.Remove();
+
+            if (!string.IsNullOrEmpty(overrideEnvironment))
+            {
+                var environmentSections = overrideEnvironment.Split('.');
+
+                for (int i = 0; i < environmentSections.Length; i++)
+                {
+                    var env = string.Join(".environments.", environmentSections.Where((x, j) => j <= i));
+
+                    var environments = config["environments"];
+                    if (!(environments is JObject)) continue;
+
+                    var settings = ((JObject) environments).SelectToken(env);
+                    if (settings == null) continue;
+
+                    // copy values for the selected environment to the root
+                    foreach (var token in settings)
+                    {
+                        var path = Path.GetExtension(token.Path);
+                        var dot = path.IndexOf(".", StringComparison.InvariantCulture);
+                        if (dot != -1) path = path.Substring(dot + 1);
+
+                        // remove if already exists on clone
+                        var jProperty = clone.Property(path);
+                        if (jProperty != null) jProperty.Remove();
+
+                        var value = (token is JProperty ? ((JProperty) token).Value : token).ToString();
+                        clone.Add(path, value);
+                    }
+                }
+            }
+
+            // remove all environments
+            var environmentsProperty = clone.Property("environments");
+            if (environmentsProperty != null) environmentsProperty.Remove();
+
+            return clone;
         }
 
         private static JToken GetToken(JToken settings, string key)

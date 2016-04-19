@@ -14,10 +14,11 @@
 */
 
 using System;
+using System.Collections.Generic;
+using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
-using System.Runtime.Serialization;
-using System.Collections.Generic;
+using QuantConnect.Securities;
 using QuantConnect.Securities.Forex;
 
 namespace QuantConnect
@@ -48,11 +49,11 @@ namespace QuantConnect
     /// <summary>
     /// Singular holding of assets from backend live nodes:
     /// </summary>
-    [JsonObjectAttribute]
+    [JsonObject]
     public class Holding
     {
         /// Symbol of the Holding:
-        public string Symbol = "";
+        public Symbol Symbol = Symbol.Empty;
 
         /// Type of the security
         public SecurityType Type;
@@ -83,7 +84,7 @@ namespace QuantConnect
         /// Create a simple JSON holdings from a Security holding class.
         /// </summary>
         /// <param name="holding">Holdings object we'll use to initialize the transport</param>
-        public Holding(Securities.SecurityHolding holding)
+        public Holding(SecurityHolding holding)
              : this()
         {
             Symbol = holding.Symbol;
@@ -95,7 +96,7 @@ namespace QuantConnect
             {
                 rounding = 5;
                 string basec, quotec;
-                Forex.DecomposeCurrencyPair(holding.Symbol, out basec, out quotec);
+                Forex.DecomposeCurrencyPair(holding.Symbol.Value, out basec, out quotec);
                 CurrencySymbol = Forex.CurrencySymbols[quotec];
                 ConversionRate = ((ForexHolding) holding).ConversionRate;
             }
@@ -269,6 +270,22 @@ namespace QuantConnect
     }
 
     /// <summary>
+    /// Account type: margin or cash
+    /// </summary>
+    public enum AccountType
+    {
+        /// <summary>
+        /// Margin account type
+        /// </summary>
+        Margin,
+
+        /// <summary>
+        /// Cash account type
+        /// </summary>
+        Cash
+    }
+
+    /// <summary>
     /// Market data style: is the market data a summary (OHLC style) bar, or is it a time-price value.
     /// </summary>
     public enum MarketDataType
@@ -280,7 +297,9 @@ namespace QuantConnect
         /// Tick market data type (price-time pair)
         Tick,
         /// Data associated with an instrument
-        Auxiliary
+        Auxiliary,
+        /// QuoteBar market data type [Bid(OHLC), Ask(OHLC) and Mid(OHLC) summary bar]
+        QuoteBar
     }
 
     /// <summary>
@@ -356,6 +375,37 @@ namespace QuantConnect
         Daily
     }
 
+    /// <summary>
+    /// Specifies the different types of options
+    /// </summary>
+    public enum OptionRight
+    {
+        /// <summary>
+        /// A call option, the right to buy at the strike price
+        /// </summary>
+        Call,
+
+        /// <summary>
+        /// A put option, the right to sell at the strike price
+        /// </summary>
+        Put
+    }
+
+    /// <summary>
+    /// Specifies the style of an option
+    /// </summary>
+    public enum OptionStyle
+    {
+        /// <summary>
+        /// American style options are able to be exercised at any time on or before the expiration date
+        /// </summary>
+        American,
+
+        /// <summary>
+        /// European style options are able to be exercised on the expiration date only.
+        /// </summary>
+        European
+    }
 
     /// <summary>
     /// Wrapper for algorithm status enum to include the charting subscription.
@@ -367,6 +417,8 @@ namespace QuantConnect
         /// </summary>
         public AlgorithmControl()
         {
+            // default to true, API can override
+            HasSubscribers = true;
             Status = AlgorithmStatus.Running;
             ChartSubscription = "Strategy Equity";
         }
@@ -380,6 +432,11 @@ namespace QuantConnect
         /// Currently requested chart.
         /// </summary>
         public string ChartSubscription;
+
+        /// <summary>
+        /// True if there's subscribers on the channel
+        /// </summary>
+        public bool HasSubscribers;
     }
 
     /// <summary>
@@ -387,8 +444,6 @@ namespace QuantConnect
     /// </summary>
     public enum AlgorithmStatus
     {
-        /// User initiated a quit request
-        Quit,           //0
         /// Error compiling algorithm at start
         DeployError,    //1
         /// Waiting for a server
@@ -408,7 +463,11 @@ namespace QuantConnect
         /// Error in the algorithm id (not used).
         Invalid,
         /// The algorithm is logging into the brokerage
-        LoggingIn
+        LoggingIn,
+        /// The algorithm is initializing
+        Initializing,
+        /// History status update
+        History
     }
 
     /// <summary>
@@ -526,6 +585,20 @@ namespace QuantConnect
         };
     }
 
+    /// <summary>
+    /// Defines the different channel status values
+    /// </summary>
+    public static class ChannelStatus
+    {
+        /// <summary>
+        /// The channel is empty
+        /// </summary>
+        public const string Vacated = "channel_vacated";
+        /// <summary>
+        /// The channel has subscribers
+        /// </summary>
+        public const string Occupied = "channel_occupied";
+    }
 
     /// <summary>
     /// US Public Holidays - Not Tradeable:

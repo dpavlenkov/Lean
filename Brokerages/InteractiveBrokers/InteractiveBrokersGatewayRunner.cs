@@ -76,12 +76,13 @@ namespace QuantConnect.Brokerages.InteractiveBrokers
                 var process = Process.Start(processStartInfo);
                 ScriptProcessID = process.Id;
 
-                // wait for 30 seconds so it can start up completely
-                Thread.Sleep(30000);
+                // wait for 5 seconds so it can start up completely. this is impossible to get
+                // correct for every machine, so the IB Connect method will keep trying for a while as well
+                Thread.Sleep(5*1000);
             }
             catch (Exception err)
             {
-                Log.Error("InteractiveBrokersGatewayRunner.Start(): " + err.Message);
+                Log.Error(err);
             }
         }
 
@@ -111,7 +112,7 @@ namespace QuantConnect.Brokerages.InteractiveBrokers
             }
             catch (Exception err)
             {
-                Log.Error("InteractiveBrokersGatewayRunner.Stop(): " + err.Message);
+                Log.Error(err);
             }
         }
 

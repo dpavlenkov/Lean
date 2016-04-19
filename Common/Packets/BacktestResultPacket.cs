@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
+using QuantConnect.Statistics;
 
 namespace QuantConnect.Packets
 {
@@ -157,7 +158,7 @@ namespace QuantConnect.Packets
             } 
             catch (Exception err)
             {
-                Log.Trace("BacktestResultPacket(): Error converting json: " + err.Message);
+                Log.Trace("BacktestResultPacket(): Error converting json: " + err);
             }
         }
 
@@ -188,7 +189,7 @@ namespace QuantConnect.Packets
                 TradeableDates = job.TradeableDates;
             }
             catch (Exception err) {
-                Log.Error("BacktestResultPacket.Constructor: " + err.Message);
+                Log.Error(err);
             }
         }
             
@@ -222,6 +223,11 @@ namespace QuantConnect.Packets
         public IDictionary<string, string> Statistics = new Dictionary<string, string>();
 
         /// <summary>
+        /// Rolling window detailed statistics.
+        /// </summary>
+        public Dictionary<string, AlgorithmPerformance> RollingWindow = new Dictionary<string, AlgorithmPerformance>();
+
+        /// <summary>
         /// Default Constructor
         /// </summary>
         public BacktestResult() {
@@ -231,12 +237,13 @@ namespace QuantConnect.Packets
         /// <summary>
         /// Constructor for the result class using dictionary objects.
         /// </summary>
-        public BacktestResult(IDictionary<string, Chart> charts, IDictionary<int, Order> orders, IDictionary<DateTime, decimal> profitLoss, IDictionary<string, string> statistics)
+        public BacktestResult(IDictionary<string, Chart> charts, IDictionary<int, Order> orders, IDictionary<DateTime, decimal> profitLoss, IDictionary<string, string> statistics, Dictionary<string, AlgorithmPerformance> rollingWindow)
         {
             Charts = charts;
             Orders = orders;
             ProfitLoss = profitLoss;
             Statistics = statistics;
+            RollingWindow = rollingWindow;
         }
     }
 

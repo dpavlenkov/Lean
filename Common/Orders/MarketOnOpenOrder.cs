@@ -31,14 +31,6 @@ namespace QuantConnect.Orders
         }
 
         /// <summary>
-        /// Value of the order at limit price if a limit order, or market price if a market order.
-        /// </summary>
-        public override decimal Value
-        {
-            get { return AbsoluteQuantity * Price; }
-        }
-
-        /// <summary>
         /// Intiializes a new instance of the <see cref="MarketOnOpenOrder"/> class.
         /// </summary>
         public MarketOnOpenOrder()
@@ -53,7 +45,7 @@ namespace QuantConnect.Orders
         /// <param name="quantity">The number of units to order</param>
         /// <param name="time">The current time</param>
         /// <param name="tag">A user defined tag for the order</param>
-        public MarketOnOpenOrder(string symbol, SecurityType type, int quantity, DateTime time, string tag = "")
+        public MarketOnOpenOrder(Symbol symbol, SecurityType type, int quantity, DateTime time, string tag = "")
             : base(symbol, quantity, time, tag, type)
         {
         }

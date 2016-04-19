@@ -15,8 +15,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Diagnostics;
+using System.IO;
 
 namespace QuantConnect 
 {
@@ -222,7 +222,8 @@ namespace QuantConnect
                 {"Used RAM (MB)",        TotalPhysicalMemoryUsed.ToString()},
                 {"Total RAM (MB)",        TotalPhysicalMemory.ToString()},
                 {"Used Disk Space (MB)", DriveSpaceUsed.ToString() },
-                {"Total Disk Space (MB)", DriveTotalSpace.ToString() }
+                {"Total Disk Space (MB)", DriveTotalSpace.ToString() },
+                {"LEAN Version", "v" + Constants.Version}
             };
         }
     } // End OS Class

@@ -12,10 +12,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
 using System;
 using QuantConnect.Data.Custom;
 using QuantConnect.Indicators;
-
 
 namespace QuantConnect.Algorithm.Examples
 {
@@ -43,7 +43,7 @@ namespace QuantConnect.Algorithm.Examples
             SetCash(25000);
 
             //Add Generic Quandl Data:
-            AddData<Quandl>(_quandlCode, Resolution.Daily, true, true);
+            AddData<Quandl>(_quandlCode, Resolution.Daily);
 
             sma = SMA(_quandlCode, 14);
         }

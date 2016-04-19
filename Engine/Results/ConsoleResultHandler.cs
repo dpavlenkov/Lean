@@ -1,4 +1,4 @@
-﻿/*
+/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  * 
@@ -27,6 +27,8 @@ using QuantConnect.Lean.Engine.TransactionHandlers;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
 using QuantConnect.Packets;
+using QuantConnect.Notifications;  
+using QuantConnect.Statistics;
 
 namespace QuantConnect.Lean.Engine.Results
 {
@@ -42,6 +44,7 @@ namespace QuantConnect.Lean.Engine.Results
         private IAlgorithm _algorithm;
         private readonly object _chartLock;
         private IConsoleStatusHandler _algorithmNode;
+        private IMessagingHandler _messagingHandler; 
 
         //Sampling Periods:
         private DateTime _nextSample;
@@ -50,6 +53,9 @@ namespace QuantConnect.Lean.Engine.Results
         private string _chartDirectory;
         private readonly Dictionary<string, List<string>> _equityResults;
 
+        /// <summary>
+        /// A dictionary containing summary statistics
+        /// </summary>
         public Dictionary<string, string> FinalStatistics { get; private set; }
 
         /// <summary>
@@ -173,6 +179,8 @@ namespace QuantConnect.Lean.Engine.Results
                 Directory.Delete(_chartDirectory, true);
             }
             Directory.CreateDirectory(_chartDirectory);
+            _messagingHandler = messagingHandler; 
+
         }
         
         /// <summary>
@@ -180,22 +188,32 @@ namespace QuantConnect.Lean.Engine.Results
         /// </summary>
         public void Run()
         {
-            while ( !_exitTriggered || Messages.Count > 0 ) 
+            try
             {
-                Thread.Sleep(100);
-
-                var now = DateTime.UtcNow;
-                if (now > _updateTime)
+                while ( !_exitTriggered || Messages.Count > 0 ) 
                 {
-                    _updateTime = now.AddSeconds(5);
-                    _algorithmNode.LogAlgorithmStatus(_lastSampledTimed);
+                    Thread.Sleep(100);
+
+                    var now = DateTime.UtcNow;
+                    if (now > _updateTime)
+                    {
+                        _updateTime = now.AddSeconds(5);
+                        _algorithmNode.LogAlgorithmStatus(_lastSampledTimed);
+                    }
+                }
+
+                // Write Equity and EquityPerformance files in charts directory
+                foreach (var fileName in _equityResults.Keys)
+                {
+                    File.WriteAllLines(fileName, _equityResults[fileName]);
                 }
             }
-
-            // Write Equity and EquityPerformance files in charts directory
-            foreach (var fileName in _equityResults.Keys)
+            catch (Exception err)
             {
-                File.WriteAllLines(fileName, _equityResults[fileName]);
+                // unexpected error, we need to close down shop
+                Log.Error(err);
+                // quit the algorithm due to error
+                _algorithm.RunTimeError = err;
             }
 
             Log.Trace("ConsoleResultHandler: Ending Thread...");
@@ -208,7 +226,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="message">Message we'd like shown in console.</param>
         public void DebugMessage(string message)
         {
-            Log.Trace("Debug Message >> " + message);
+            Log.Trace(_algorithm.Time + ": Debug >> " + message);
         }
 
         /// <summary>
@@ -217,7 +235,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="message">Message we'd in the log.</param>
         public void LogMessage(string message)
         {
-            Log.Trace("Log Message >> " + message);
+            Log.Trace(_algorithm.Time + ": Log >> " + message);
         }
 
         /// <summary>
@@ -227,7 +245,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="stacktrace">Stacktrace information string</param>
         public void RuntimeError(string message, string stacktrace = "")
         {
-            Log.Error("Error Message >> " + message + (!string.IsNullOrEmpty(stacktrace) ? (" >> ST: " + stacktrace) : ""));
+            Log.Error(_algorithm.Time + ": Error >> " + message + (!string.IsNullOrEmpty(stacktrace) ? (" >> ST: " + stacktrace) : ""));
         }
 
         /// <summary>
@@ -237,21 +255,21 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="stacktrace">Stacktrace information string</param>
         public void ErrorMessage(string message, string stacktrace = "")
         {
-            Log.Error("Error Message >> " + message + (!string.IsNullOrEmpty(stacktrace) ? (" >> ST: " + stacktrace) : ""));
+            Log.Error(_algorithm.Time + ": Error >> " + message + (!string.IsNullOrEmpty(stacktrace) ? (" >> ST: " + stacktrace) : ""));
         }
 
         /// <summary>
         /// Add a sample to the chart specified by the chartName, and seriesName.
         /// </summary>
         /// <param name="chartName">String chart name to place the sample.</param>
-        /// <param name="chartType">Type of chart we should create if it doesn't already exist.</param>
         /// <param name="seriesName">Series name for the chart.</param>
         /// <param name="seriesType">Series type for the chart.</param>
         /// <param name="time">Time for the sample</param>
         /// <param name="value">Value for the chart sample.</param>
         /// <param name="unit">Unit for the sample axis</param>
+        /// <param name="seriesIndex">Index of the series we're sampling</param>
         /// <remarks>Sample can be used to create new charts or sample equity - daily performance.</remarks>
-        public void Sample(string chartName, ChartType chartType, string seriesName, SeriesType seriesType, DateTime time, decimal value, string unit = "$")
+        public void Sample(string chartName, string seriesName, int seriesIndex, SeriesType seriesType, DateTime time, decimal value, string unit = "$")
         {
             var chartFilename = Path.Combine(_chartDirectory, chartName + "-" + seriesName + ".csv");
 
@@ -269,13 +287,13 @@ namespace QuantConnect.Lean.Engine.Results
                 //Add a copy locally:
                 if (!Charts.ContainsKey(chartName))
                 {
-                    Charts.AddOrUpdate<string, Chart>(chartName, new Chart(chartName, chartType));
+                    Charts.AddOrUpdate(chartName, new Chart(chartName));
                 }
 
                 //Add the sample to our chart:
                 if (!Charts[chartName].Series.ContainsKey(seriesName))
                 {
-                    Charts[chartName].Series.Add(seriesName, new Series(seriesName, seriesType));
+                    Charts[chartName].Series.Add(seriesName, new Series(seriesName, seriesType, seriesIndex, unit));
                 }
 
                 //Add our value:
@@ -290,7 +308,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="value">Current equity value</param>
         public void SampleEquity(DateTime time, decimal value)
         {
-            Sample("Strategy Equity", ChartType.Stacked, "Equity", SeriesType.Candle, time, value);
+            Sample("Strategy Equity", "Equity", 0, SeriesType.Candle, time, value);
             _lastSampledTimed = time;
         }
 
@@ -301,9 +319,19 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="value">Value of the daily performance.</param>
         public void SamplePerformance(DateTime time, decimal value)
         {
-            Sample("Strategy Equity", ChartType.Overlay, "Daily Performance", SeriesType.Line, time, value, "%");
+            Sample("Strategy Equity", "Daily Performance", 1, SeriesType.Line, time, value, "%");
         }
 
+        /// <summary>
+        /// Sample the current benchmark performance directly with a time-value pair.
+        /// </summary>
+        /// <param name="time">Current backtest date.</param>
+        /// <param name="value">Current benchmark value.</param>
+        /// <seealso cref="IResultHandler.Sample"/>
+        public void SampleBenchmark(DateTime time, decimal value)
+        {
+            Sample("Benchmark", "Benchmark", 0, SeriesType.Line, time, value);
+        }
 
         /// <summary>
         /// Analyse the algorithm and determine its security types.
@@ -317,11 +345,10 @@ namespace QuantConnect.Lean.Engine.Results
         /// <summary>
         /// Send an algorithm status update to the browser.
         /// </summary>
-        /// <param name="algorithmId">Algorithm id for the status update.</param>
         /// <param name="status">Status enum value.</param>
         /// <param name="message">Additional optional status message.</param>
         /// <remarks>In backtesting we do not send the algorithm status updates.</remarks>
-        public void SendStatusUpdate(string algorithmId, AlgorithmStatus status, string message = "")
+        public void SendStatusUpdate(AlgorithmStatus status, string message = "")
         {
             Log.Trace("ConsoleResultHandler.SendStatusUpdate(): Algorithm Status: " + status + " : " + message);
         }
@@ -332,7 +359,7 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="symbol">Symbol we're sampling.</param>
         /// <param name="time">Time of sample</param>
         /// <param name="value">Value of the asset price</param>
-        public void SampleAssetPrices(string symbol, DateTime time, decimal value)
+        public void SampleAssetPrices(Symbol symbol, DateTime time, decimal value)
         { 
             //NOP. Don't sample asset prices in console.
         }
@@ -376,21 +403,26 @@ namespace QuantConnect.Lean.Engine.Results
         /// <param name="orders">Collection of orders from the algorithm</param>
         /// <param name="profitLoss">Collection of time-profit values for the algorithm</param>
         /// <param name="holdings">Current holdings state for the algorithm</param>
-        /// <param name="statistics">Statistics information for the algorithm (empty if not finished)</param>
+        /// <param name="statisticsResults">Statistics information for the algorithm (empty if not finished)</param>
         /// <param name="banner">Runtime statistics banner information</param>
-        public void SendFinalResult(AlgorithmNodePacket job, Dictionary<int, Order> orders, Dictionary<DateTime, decimal> profitLoss, Dictionary<string, Holding> holdings, Dictionary<string, string> statistics, Dictionary<string, string> banner)
+        public void SendFinalResult(AlgorithmNodePacket job, Dictionary<int, Order> orders, Dictionary<DateTime, decimal> profitLoss, Dictionary<string, Holding> holdings, StatisticsResults statisticsResults, Dictionary<string, string> banner)
         {
             // uncomment these code traces to help write regression tests
-            //Log.Trace("var statistics = new Dictionary<string, string>();");
+            //Console.WriteLine("var statistics = new Dictionary<string, string>();");
             
             // Bleh. Nicely format statistical analysis on your algorithm results. Save to file etc.
-            foreach (var pair in statistics) 
+            foreach (var pair in statisticsResults.Summary) 
             {
                 Log.Trace("STATISTICS:: " + pair.Key + " " + pair.Value);
-                //Log.Trace(string.Format("statistics.Add(\"{0}\",\"{1}\");", pair.Key, pair.Value));
+                //Console.WriteLine(string.Format("statistics.Add(\"{0}\",\"{1}\");", pair.Key, pair.Value));
             }
 
-            FinalStatistics = statistics;
+            //foreach (var pair in statisticsResults.RollingPerformances) 
+            //{
+            //    Log.Trace("ROLLINGSTATS:: " + pair.Key + " SharpeRatio: " + Math.Round(pair.Value.PortfolioStatistics.SharpeRatio, 3));
+            //}
+
+            FinalStatistics = statisticsResults.Summary;
         }
 
         /// <summary>
@@ -590,6 +622,46 @@ namespace QuantConnect.Lean.Engine.Results
             foreach (var pair in _algorithm.RuntimeStatistics)
             {
                 RuntimeStatistic(pair.Key, pair.Value);
+            }
+            // Dequeue and processes notification messages
+            //Send all the notification messages but timeout within a second
+            var start = DateTime.UtcNow;
+            while (_algorithm.Notify.Messages.Count > 0 && DateTime.UtcNow < start.AddSeconds(1))
+            {
+                Notification message;
+                if (_algorithm.Notify.Messages.TryDequeue(out message))
+                {
+                    //Process the notification messages:
+                    Log.Trace("ConsoleResultHandler.ProcessSynchronousEvents(): Processing Notification...");
+
+                    switch (message.GetType().Name)
+                    {
+                        case "NotificationEmail":
+                            _messagingHandler.Email(message as NotificationEmail);
+                            break;
+
+                        case "NotificationSms":
+                            _messagingHandler.Sms(message as NotificationSms);
+                            break;
+
+                        case "NotificationWeb":
+                            _messagingHandler.Web(message as NotificationWeb);
+                            break;
+
+                        default:
+                            try
+                            {
+                                //User code.
+                                message.Send();
+                            }
+                            catch (Exception err)
+                            {
+                                Log.Error(err, "Custom send notification:");
+                                ErrorMessage("Custom send notification: " + err.Message, err.StackTrace);
+                            }
+                            break;
+                    }
+                }
             }
         }
 

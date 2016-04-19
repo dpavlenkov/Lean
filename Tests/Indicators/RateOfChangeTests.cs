@@ -12,9 +12,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
 using NUnit.Framework;
 using QuantConnect.Indicators;
-using System;
 
 namespace QuantConnect.Tests.Indicators
 {
@@ -26,7 +26,7 @@ namespace QuantConnect.Tests.Indicators
         {
             var roc = new RateOfChange(50); 
             double epsilon = 1e-3;
-            TestHelper.TestIndicator(roc, "spy_with_roc50.txt", "Rate of Change 50", (ind, expected) => Assert.AreEqual(expected, (double)ind.Current.Value, epsilon));
+            TestHelper.TestIndicator(roc, "spy_with_rocp50.txt", "Rate of Change % 50", (ind, expected) => Assert.AreEqual(expected, (double)ind.Current.Value * 100, epsilon));
         }
 
         [Test]

@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
 using System;
 using System.IO;
 
@@ -22,6 +23,8 @@ namespace QuantConnect.Logging
     /// </summary>
     public class FileLogHandler : ILogHandler
     {
+        private bool _disposed;
+
         // we need to control synchronization to our stream writer since it's not inherently thread-safe
         private readonly object _lock = new object();
         private readonly Lazy<TextWriter> _writer;
@@ -83,6 +86,7 @@ namespace QuantConnect.Logging
             {
                 if (_writer.IsValueCreated)
                 {
+                    _disposed = true;
                     _writer.Value.Dispose();
                 }
             }
@@ -95,6 +99,7 @@ namespace QuantConnect.Logging
         {
             lock (_lock)
             {
+                if (_disposed) return;
                 _writer.Value.WriteLine("{0} {1}:: {2}", DateTime.UtcNow.ToString("o"), level, text);
                 _writer.Value.Flush();
             }

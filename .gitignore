@@ -18,7 +18,7 @@
 *.lo
 
 # Shared objects (inc. Windows DLLs)
-*.dll
+#*.dll
 *.so
 *.so.*
 *.dylib
@@ -247,3 +247,7 @@ testrunner/
 
 # Output chart data
 Charts/
+
+# NCrunch files
+*.ncrunchsolution
+*.ncrunchproject

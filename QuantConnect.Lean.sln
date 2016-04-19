@@ -3,6 +3,8 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
 VisualStudioVersion = 12.0.31101.0
 MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuantConnect.Lean.Launcher", "Launcher\QuantConnect.Lean.Launcher.csproj", "{09E7B916-E58B-4021-BD8B-C10B4446E226}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuantConnect.Lean.Engine", "Engine\QuantConnect.Lean.Engine.csproj", "{12156F46-D07E-4E3D-AD2B-7409E82AB62F}"
 	ProjectSection(ProjectDependencies) = postProject
 		{C5D44209-49A0-4505-A870-043C5EF5FDDF} = {C5D44209-49A0-4505-A870-043C5EF5FDDF}
@@ -14,8 +16,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuantConnect.Lean.Engine", 
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuantConnect.Algorithm", "Algorithm\QuantConnect.Algorithm.csproj", "{3240ACA4-BDD4-4D24-AC36-BBB651C39212}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuantConnect.Interfaces", "Interfaces\QuantConnect.Interfaces.csproj", "{338F614C-4CD7-418A-BD31-8C6A8690CFBF}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuantConnect", "Common\QuantConnect.csproj", "{2545C0B4-FABB-49C9-8DD1-9AD7EE23F86B}"
 EndProject
@@ -56,6 +56,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".nuget", ".nuget", "{93A63A
 		.nuget\packages.config = .nuget\packages.config
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuantConnect.ToolBox", "ToolBox\QuantConnect.ToolBox.csproj", "{AC9A142C-B485-44D7-91FF-015C22C43D05}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -70,10 +72,6 @@ Global
 		{3240ACA4-BDD4-4D24-AC36-BBB651C39212}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3240ACA4-BDD4-4D24-AC36-BBB651C39212}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3240ACA4-BDD4-4D24-AC36-BBB651C39212}.Release|Any CPU.Build.0 = Release|Any CPU
-		{338F614C-4CD7-418A-BD31-8C6A8690CFBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{338F614C-4CD7-418A-BD31-8C6A8690CFBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{338F614C-4CD7-418A-BD31-8C6A8690CFBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{338F614C-4CD7-418A-BD31-8C6A8690CFBF}.Release|Any CPU.Build.0 = Release|Any CPU
 		{2545C0B4-FABB-49C9-8DD1-9AD7EE23F86B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2545C0B4-FABB-49C9-8DD1-9AD7EE23F86B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2545C0B4-FABB-49C9-8DD1-9AD7EE23F86B}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -135,11 +133,17 @@ Global
 		{AF8F124B-B441-4AA7-92B7-CEA72BDB4118}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AF8F124B-B441-4AA7-92B7-CEA72BDB4118}.Release|Any CPU.Build.0 = Release|Any CPU
 		{48289996-CE56-4EDF-B451-4A2B1519EBC3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{48289996-CE56-4EDF-B451-4A2B1519EBC3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{48289996-CE56-4EDF-B451-4A2B1519EBC3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{48289996-CE56-4EDF-B451-4A2B1519EBC3}.Release|Any CPU.Build.0 = Release|Any CPU
 		{61097E9E-EB20-4677-B394-CE0682B9D610}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{61097E9E-EB20-4677-B394-CE0682B9D610}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC9A142C-B485-44D7-91FF-015C22C43D05}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC9A142C-B485-44D7-91FF-015C22C43D05}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC9A142C-B485-44D7-91FF-015C22C43D05}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC9A142C-B485-44D7-91FF-015C22C43D05}.Release|Any CPU.Build.0 = Release|Any CPU
+		{09E7B916-E58B-4021-BD8B-C10B4446E226}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{09E7B916-E58B-4021-BD8B-C10B4446E226}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{09E7B916-E58B-4021-BD8B-C10B4446E226}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{09E7B916-E58B-4021-BD8B-C10B4446E226}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

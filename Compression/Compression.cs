@@ -12,15 +12,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Text;
-using ICSharpCode.SharpZipLib.Zip;
-using ICSharpCode.SharpZipLib.Tar;
-using ICSharpCode.SharpZipLib.GZip;
 using ICSharpCode.SharpZipLib.Core;
+using ICSharpCode.SharpZipLib.GZip;
+using ICSharpCode.SharpZipLib.Tar;
+using QuantConnect.Data.Market;
 using QuantConnect.Logging;
+using ZipEntry = ICSharpCode.SharpZipLib.Zip.ZipEntry;
+using ZipFile = Ionic.Zip.ZipFile;
+using ZipInputStream = ICSharpCode.SharpZipLib.Zip.ZipInputStream;
+using ZipOutputStream = ICSharpCode.SharpZipLib.Zip.ZipOutputStream;
 
 namespace QuantConnect 
 {
@@ -73,7 +80,7 @@ namespace QuantConnect
             }
             catch (Exception err)
             {
-                Log.Error("QC.Data.ZipData(): " + err.Message);
+                Log.Error(err);
                 success = false;
             }
             return success;
@@ -85,7 +92,7 @@ namespace QuantConnect
         /// <param name="zipPath">Output location to save the file.</param>
         /// <param name="filenamesAndData">File names and data in a dictionary format.</param>
         /// <returns>True on successfully saving the file</returns>
-        public static bool ZipData(string zipPath, IReadOnlyDictionary<string, byte[]> filenamesAndData)
+        public static bool ZipData(string zipPath, IEnumerable<KeyValuePair<string, byte[]>> filenamesAndData)
         {
             var success = true;
             var buffer = new byte[4096];
@@ -95,15 +102,14 @@ namespace QuantConnect
                 //Create our output
                 using (var stream = new ZipOutputStream(File.Create(zipPath)))
                 {
-                    foreach (var filename in filenamesAndData.Keys)
+                    foreach (var file in filenamesAndData)
                     {
                         //Create the space in the zip file:
-                        var entry = new ZipEntry(filename);
+                        var entry = new ZipEntry(file.Key);
                         //Get a Byte[] of the file data:
-                        var file = filenamesAndData[filename];
                         stream.PutNextEntry(entry);
 
-                        using (var ms = new MemoryStream(file))
+                        using (var ms = new MemoryStream(file.Value))
                         {
                             int sourceBytes;
                             do
@@ -122,10 +128,40 @@ namespace QuantConnect
             }
             catch (Exception err)
             {
-                Log.Error("QC.Data.ZipData(): " + err.Message);
+                Log.Error(err);
                 success = false;
             }
             return success;
+        }
+
+        /// <summary>
+        /// Zips the specified lines of text into the zipPath
+        /// </summary>
+        /// <param name="zipPath">The destination zip file path</param>
+        /// <param name="zipEntry">The entry name in the zip</param>
+        /// <param name="lines">The lines to be written to the zip</param>
+        /// <returns>True if successful, otherwise false</returns>
+        public static bool ZipData(string zipPath, string zipEntry, IEnumerable<string> lines)
+        {
+            try
+            {
+                using (var stream = new ZipOutputStream(File.Create(zipPath)))
+                using (var writer = new StreamWriter(stream))
+                {
+                    var entry = new ZipEntry(zipEntry);
+                    stream.PutNextEntry(entry);
+                    foreach (var line in lines)
+                    {
+                        writer.WriteLine(line);
+                    }
+                }
+                return true;
+            }
+            catch (Exception err)
+            {
+                Log.Error(err);
+                return false;
+            }
         }
 
         /// <summary>
@@ -170,7 +206,7 @@ namespace QuantConnect
             }
             catch (Exception err)
             {
-                Log.Error("Data.UnzipData(): " + err.Message);
+                Log.Error(err);
             }
             return data;
         }
@@ -179,9 +215,10 @@ namespace QuantConnect
         /// Compress a given file and delete the original file. Automatically rename the file to name.zip.
         /// </summary>
         /// <param name="textPath">Path of the original file</param>
+        /// <param name="zipEntryName">The name of the entry inside the zip file</param>
         /// <param name="deleteOriginal">Boolean flag to delete the original file after completion</param>
         /// <returns>String path for the new zip file</returns>
-        public static string Zip(string textPath, bool deleteOriginal = true)
+        public static string Zip(string textPath, string zipEntryName, bool deleteOriginal = true)
         {
             var zipPath = "";
 
@@ -194,7 +231,7 @@ namespace QuantConnect
                 using (var stream = new ZipOutputStream(File.Create(zipPath)))
                 {
                     //Zip the text file.
-                    var entry = new ZipEntry(Path.GetFileName(textPath));
+                    var entry = new ZipEntry(zipEntryName);
                     stream.PutNextEntry(entry);
 
                     using (var fs = File.OpenRead(textPath))
@@ -216,10 +253,21 @@ namespace QuantConnect
             }
             catch (Exception err)
             {
-                Log.Error("QC.Data.Zip(): " + err.Message);
+                Log.Error(err);
             }
             return zipPath;
-        } // End Zip:
+        }
+
+        /// <summary>
+        /// Compress a given file and delete the original file. Automatically rename the file to name.zip.
+        /// </summary>
+        /// <param name="textPath">Path of the original file</param>
+        /// <param name="deleteOriginal">Boolean flag to delete the original file after completion</param>
+        /// <returns>String path for the new zip file</returns>
+        public static string Zip(string textPath, bool deleteOriginal = true)
+        {
+            return Zip(textPath, Path.GetFileName(textPath), deleteOriginal);
+        }
 
         public static void Zip(string data, string zipPath, string zipEntry)
         {
@@ -238,6 +286,73 @@ namespace QuantConnect
                     }
                     while (sourceBytes > 0);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Zips the specified directory, preserving folder structure
+        /// </summary>
+        /// <param name="directory">The directory to be zipped</param>
+        /// <param name="destination">The output zip file destination</param>
+        /// <param name="includeRootInZip">True to include the root 'directory' in the zip, false otherwise</param>
+        /// <returns>True on a successful zip, false otherwise</returns>
+        public static bool ZipDirectory(string directory, string destination, bool includeRootInZip = true)
+        {
+            try
+            {
+                if (File.Exists(destination)) File.Delete(destination);
+                System.IO.Compression.ZipFile.CreateFromDirectory(directory, destination, CompressionLevel.Fastest, includeRootInZip);
+                return true;
+            }
+            catch (Exception err)
+            {
+                Log.Error(err);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Unzips the specified zip file to the specified directory
+        /// </summary>
+        /// <param name="zip">The zip to be unzipped</param>
+        /// <param name="directory">The directory to place the unzipped files</param>
+        /// <param name="overwrite">Flag specifying whether or not to overwrite existing files</param>
+        public static bool Unzip(string zip, string directory, bool overwrite = false)
+        {
+            if (!File.Exists(zip)) return false;
+
+            try
+            {
+                if (!overwrite)
+                {
+                    System.IO.Compression.ZipFile.ExtractToDirectory(zip, directory);
+                }
+                else
+                {
+                    using (var archive = new ZipArchive(File.OpenRead(zip)))
+                    {
+                        foreach (var file in archive.Entries)
+                        {
+                            // skip directories
+                            if (file.Name == "") continue;
+                            var filepath = Path.Combine(directory, file.FullName);
+                            if (OS.IsLinux) filepath = filepath.Replace(@"\", "/");
+                            var outputFile = new FileInfo(filepath);
+                            if (!outputFile.Directory.Exists)
+                            {
+                                outputFile.Directory.Create();
+                            }
+                            file.ExtractToFile(outputFile.FullName, true);
+                        }
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception err)
+            {
+                Log.Error(err);
+                return false;
             }
         }
 
@@ -281,7 +396,7 @@ namespace QuantConnect
         /// <param name="filename">Location of the original zip file</param>
         /// <param name="zip">The ZipFile instance to be returned to the caller</param>
         /// <returns>Stream reader of the first file contents in the zip file</returns>
-        public static StreamReader Unzip(string filename, out Ionic.Zip.ZipFile zip)
+        public static StreamReader Unzip(string filename, out ZipFile zip)
         {
             StreamReader reader = null;
             zip = null;
@@ -292,13 +407,13 @@ namespace QuantConnect
                 {
                     try
                     {
-                        zip = new Ionic.Zip.ZipFile(filename);
+                        zip = new ZipFile(filename);
 
                         reader = new StreamReader(zip[0].OpenReader());
                     }
                     catch (Exception err)
                     {
-                        Log.Error("QC.Data.Unzip(1): " + err.Message);
+                        Log.Error(err, "Inner try/catch");
                         if (zip != null) zip.Dispose();
                         if (reader != null) reader.Close();
                     }
@@ -310,10 +425,54 @@ namespace QuantConnect
             }
             catch (Exception err)
             {
-                Log.Error("Data.UnZip(3): " + filename + " >> " + err.Message);
+                Log.Error(err, "File: " + filename);
             }
             return reader;
         } // End UnZip
+
+        /// <summary>
+        /// Streams the unzipped file as key value pairs of file name to file contents.
+        /// NOTE: When the returned enumerable finishes enumerating, the zip stream will be
+        /// closed rendering all key value pair Value properties unaccessible. Ideally this
+        /// would be enumerated depth first.
+        /// </summary>
+        /// <param name="filename">The zip file to stream</param>
+        /// <returns>The stream zip contents</returns>
+        public static IEnumerable<KeyValuePair<string, IEnumerable<string>>> Unzip(string filename)
+        {
+            if (!File.Exists(filename))
+            {
+                Log.Error("Compression.Unzip(): File does not exist: " + filename);
+                return Enumerable.Empty<KeyValuePair<string, IEnumerable<string>>>();
+            }
+
+            try
+            {
+                return ReadLinesImpl(filename);
+            }
+            catch (Exception err)
+            {
+                Log.Error(err);
+            }
+            return Enumerable.Empty<KeyValuePair<string, IEnumerable<string>>>();
+        }
+
+        /// <summary>
+        /// Lazily unzips the specified stream
+        /// </summary>
+        /// <param name="stream">The zipped stream to be read</param>
+        /// <returns>An enumerable whose elements are zip entry key value pairs with
+        /// a key of the zip entry name and the value of the zip entry's file lines</returns>
+        public static IEnumerable<KeyValuePair<string, IEnumerable<string>>> Unzip(Stream stream)
+        {
+            using (var zip = ZipFile.Read(stream))
+            {
+                foreach (var entry in zip)
+                {
+                    yield return new KeyValuePair<string, IEnumerable<string>>(entry.FileName, ReadZipEntry(entry));
+                }
+            }
+        }
 
         /// <summary>
         /// Streams each line from the first zip entry in the specified zip file
@@ -325,31 +484,44 @@ namespace QuantConnect
             if (!File.Exists(filename))
             {
                 Log.Error("Compression.ReadFirstZipEntry(): File does not exist: " + filename);
-                return null;
+                return Enumerable.Empty<string>();
             }
 
             try
             {
-                return ReadLinesImpl(filename);
+                return ReadLinesImpl(filename, firstEntryOnly: true).Single().Value;
             }
             catch (Exception err)
             {
                 Log.Error(err);
             }
-            return null;
+            return Enumerable.Empty<string>();
         }
 
-        private static IEnumerable<string> ReadLinesImpl(string filename)
+        private static IEnumerable<KeyValuePair<string, IEnumerable<string>>> ReadLinesImpl(string filename, bool firstEntryOnly = false)
         {
-            using (var zip = Ionic.Zip.ZipFile.Read(filename))
+            using (var zip = ZipFile.Read(filename))
             {
-                var entry = zip[0];
-                using (var entryReader = new StreamReader(entry.OpenReader()))
+                if (firstEntryOnly)
                 {
-                    while (!entryReader.EndOfStream)
-                    {
-                        yield return entryReader.ReadLine();
-                    }
+                    var entry = zip[0];
+                    yield return new KeyValuePair<string, IEnumerable<string>>(entry.FileName, ReadZipEntry(entry));
+                    yield break;
+                }
+                foreach (var entry in zip)
+                {
+                    yield return new KeyValuePair<string, IEnumerable<string>>(entry.FileName, ReadZipEntry(entry));
+                }
+            }
+        }
+
+        private static IEnumerable<string> ReadZipEntry(Ionic.Zip.ZipEntry entry)
+        {
+            using (var entryReader = new StreamReader(entry.OpenReader()))
+            {
+                while (!entryReader.EndOfStream)
+                {
+                    yield return entryReader.ReadLine();
                 }
             }
         }
@@ -382,7 +554,7 @@ namespace QuantConnect
             }
             catch (Exception err)
             {
-                Log.Error(err, "Data.UnZip(): Stream >> " + err.Message);
+                Log.Error(err);
             }
 
             return reader;
@@ -403,12 +575,12 @@ namespace QuantConnect
             {
                 outFolder = zipFile.Substring(0, slash);
             }
-            ZipFile zf = null;
+            ICSharpCode.SharpZipLib.Zip.ZipFile zf = null;
 
             try
             {
                 var fs = File.OpenRead(zipFile);
-                zf = new ZipFile(fs);
+                zf = new ICSharpCode.SharpZipLib.Zip.ZipFile(fs);
 
                 foreach (ZipEntry zipEntry in zf)
                 {
@@ -478,19 +650,83 @@ namespace QuantConnect
         }
 
         /// <summary>
+        /// Enumerate through the files of a TAR and get a list of KVP names-byte arrays
+        /// </summary>
+        /// <param name="stream">The input tar stream</param>
+        /// <param name="isTarGz">True if the input stream is a .tar.gz or .tgz</param>
+        /// <returns>An enumerable containing each tar entry and it's contents</returns>
+        public static IEnumerable<KeyValuePair<string, byte[]>> UnTar(Stream stream, bool isTarGz)
+        {
+            using (var tar = new TarInputStream(isTarGz ? (Stream)new GZipInputStream(stream) : stream))
+            {
+                TarEntry entry;
+                while ((entry = tar.GetNextEntry()) != null)
+                {
+                    if (entry.IsDirectory) continue;
+
+                    using (var output = new MemoryStream())
+                    {
+                        tar.CopyEntryContents(output);
+                        yield return new KeyValuePair<string, byte[]>(entry.Name, output.ToArray());
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Enumerate through the files of a TAR and get a list of KVP names-byte arrays.
+        /// </summary>
+        /// <param name="source"></param>
+        /// <returns></returns>
+        public static IEnumerable<KeyValuePair<string, byte[]>> UnTar(string source)
+        {
+            //This is a tar.gz file.
+            var gzip = (source.Substring(Math.Max(0, source.Length - 6)) == "tar.gz");
+
+            using (var file = File.OpenRead(source))
+            {
+                var tarIn = new TarInputStream(file);
+
+                if (gzip)
+                {
+                    var gzipStream = new GZipInputStream(file);
+                    tarIn = new TarInputStream(gzipStream);
+                }
+
+                TarEntry tarEntry;
+                while ((tarEntry = tarIn.GetNextEntry()) != null)
+                {
+                    if (tarEntry.IsDirectory) continue;
+
+                    using (var stream = new MemoryStream())
+                    {
+                        tarIn.CopyEntryContents(stream);
+                        yield return new KeyValuePair<string, byte[]>(tarEntry.Name, stream.ToArray());
+                    }
+                }
+                tarIn.Close();
+            }
+        }
+
+        /// <summary>
         /// Creates the entry name for a QC zip data file
         /// </summary>
-        public static string CreateZipEntryName(string symbol, SecurityType securityType, DateTime date, Resolution resolution)
+        public static string CreateZipEntryName(string symbol, SecurityType securityType, DateTime date, Resolution resolution, TickType dataType = TickType.Trade)
         {
+            symbol = symbol.ToLower();
+
             if (resolution == Resolution.Hour || resolution == Resolution.Daily)
             {
                 return symbol + ".csv";
             }
-            if (securityType == SecurityType.Forex)
+
+            //All fx is quote data.
+            if (securityType == SecurityType.Forex || securityType == SecurityType.Cfd)
             {
-                return String.Format("{0}_{1}_{2}_quote.csv", date.ToString(DateFormat.EightCharacter), symbol.ToLower(), resolution.ToString().ToLower());
+                dataType = TickType.Quote;
             }
-            return String.Format("{0}_{1}_{2}_trade.csv", date.ToString(DateFormat.EightCharacter), symbol.ToLower(), resolution.ToString().ToLower());
+
+            return String.Format("{0}_{1}_{2}_{3}.csv", date.ToString(DateFormat.EightCharacter), symbol, resolution.ToString().ToLower(), dataType.ToString().ToLower());
         }
 
         /// <summary>
@@ -500,11 +736,11 @@ namespace QuantConnect
         {
             if (resolution == Resolution.Hour || resolution == Resolution.Daily)
             {
-                return symbol + ".zip";
+                return symbol.ToLower() + ".zip";
             }
 
             var zipFileName = date.ToString(DateFormat.EightCharacter);
-            if (securityType == SecurityType.Forex)
+            if (securityType == SecurityType.Forex || securityType == SecurityType.Cfd)
             {
                 return zipFileName + "_quote.zip";
             }

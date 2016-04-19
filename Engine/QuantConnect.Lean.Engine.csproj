@@ -6,7 +6,7 @@
     <ProductVersion>8.0.30703</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{12156F46-D07E-4E3D-AD2B-7409E82AB62F}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>QuantConnect.Lean.Engine</RootNamespace>
     <AssemblyName>QuantConnect.Lean.Engine</AssemblyName>
@@ -55,7 +55,6 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup>
-    <StartupObject>QuantConnect.Lean.Engine.Engine</StartupObject>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
     <DebugSymbols>true</DebugSymbols>
@@ -134,13 +133,13 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\packages\MathNet.Numerics.3.7.0\lib\net40\MathNet.Numerics.dll</HintPath>
     </Reference>
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.Dynamic, Version=1.1.0.20, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
       <Private>True</Private>
       <HintPath>..\packages\IronPython.2.7.5\lib\Net45\Microsoft.Dynamic.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Scripting, Version=1.1.0.20, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
       <Private>True</Private>
-      <HintPath>..\packages\IronPython.2.7.5\lib\Net45\Microsoft.Scripting.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Scripting.AspNet, Version=1.0.0.0, Culture=neutral, PublicKeyToken=7f709c5b713576e1, processorArchitecture=MSIL">
       <HintPath>..\packages\IronPython.2.7.5\lib\Net45\Microsoft.Scripting.AspNet.dll</HintPath>
@@ -175,34 +174,46 @@
       <Link>Properties\SharedAssemblyInfo.cs</Link>
     </Compile>
     <Compile Include="AlgorithmManager.cs" />
-    <Compile Include="DataFeeds\Auxiliary\FactorFile.cs" />
-    <Compile Include="DataFeeds\Auxiliary\FactorFileRow.cs" />
-    <Compile Include="DataFeeds\Auxiliary\MapFile.cs" />
-    <Compile Include="DataFeeds\Auxiliary\MapFileRow.cs" />
+    <Compile Include="DataFeeds\Enumerators\BaseDataCollectionAggregatorEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\EnqueueableEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\FastForwardEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\FillForwardEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\FrontierAwareEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\LiveFillForwardEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\RateLimitEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\RefreshEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\SubscriptionFilterEnumerator.cs" />
+    <Compile Include="DataFeeds\Enumerators\TradeBarBuilderEnumerator.cs" />
+    <Compile Include="DataFeeds\ITimeProvider.cs" />
+    <Compile Include="DataFeeds\ManualTimeProvider.cs" />
+    <Compile Include="DataFeeds\RealTimeProvider.cs" />
     <Compile Include="DataFeeds\BaseDataSubscriptionFactory.cs" />
     <Compile Include="DataFeeds\CreateStreamReaderErrorEventArgs.cs" />
-    <Compile Include="DataFeeds\FillForwardEnumerator.cs" />
+    <Compile Include="DataFeeds\BaseDataExchange.cs" />
+    <Compile Include="DataFeeds\LiveTradingDataFeed.cs" />
+    <Compile Include="DataFeeds\SubscriptionLimiter.cs" />
+    <Compile Include="DataFeeds\SubscriptionSynchronizer.cs" />
+    <Compile Include="DataFeeds\Subscription.cs" />
     <Compile Include="DataFeeds\InvalidSourceEventArgs.cs" />
     <Compile Include="DataFeeds\ISubscriptionFactory.cs" />
-    <Compile Include="DataFeeds\LiveTradingDataFeed.cs" />
-    <Compile Include="DataFeeds\DatabaseDataFeed.cs" />
     <Compile Include="DataFeeds\Queues\DataQueue.cs" />
     <Compile Include="DataFeeds\Queues\FakeDataQueue.cs" />
     <Compile Include="DataFeeds\ReaderErrorEventArgs.cs" />
-    <Compile Include="DataFeeds\StreamStore.cs" />
     <Compile Include="DataFeeds\SubscriptionDataReader.cs" />
-    <Compile Include="DataFeeds\SubscriptionFilterEnumerator.cs" />
     <Compile Include="DataFeeds\TimeSlice.cs" />
     <Compile Include="DataFeeds\Transport\IStreamReader.cs" />
     <Compile Include="DataFeeds\Transport\LocalFileSubscriptionStreamReader.cs" />
     <Compile Include="DataFeeds\Transport\RemoteFileSubscriptionStreamReader.cs" />
     <Compile Include="DataFeeds\Transport\RestSubscriptionStreamReader.cs" />
+    <Compile Include="DataFeeds\UniverseSelection.cs" />
+    <Compile Include="DefaultBrokerageMessageHandler.cs" />
+    <Compile Include="HistoricalData\SubscriptionDataReaderHistoryProvider.cs" />
     <Compile Include="LeanEngineAlgorithmHandlers.cs" />
     <Compile Include="LeanEngineSystemHandlers.cs" />
-    <Compile Include="RealTime\RealTimeEvent.cs" />
     <Compile Include="RealTime\LiveTradingRealTimeHandler.cs" />
     <Compile Include="RealTime\BacktestingRealTimeHandler.cs" />
     <Compile Include="RealTime\IRealTimeHandler.cs" />
+    <Compile Include="RealTime\ScheduledEventFactory.cs" />
     <Compile Include="Results\DesktopResultHandler.cs" />
     <Compile Include="Results\IResultHandler.cs" />
     <Compile Include="Setup\BrokerageSetupHandler.cs" />
@@ -212,9 +223,6 @@
     <Compile Include="Setup\BacktestingSetupHandler.cs" />
     <Compile Include="Setup\ISetupHandler.cs" />
     <None Include="app.config" />
-    <None Include="config.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Include="packages.config" />
     <Compile Include="Results\BacktestingResultHandler.cs" />
     <Compile Include="DataFeeds\FileSystemDataFeed.cs" />
@@ -267,10 +275,6 @@
     <ProjectReference Include="..\Indicators\QuantConnect.Indicators.csproj">
       <Project>{73fb2522-c3ed-4e47-8e3d-afad48a6b888}</Project>
       <Name>QuantConnect.Indicators</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Interfaces\QuantConnect.Interfaces.csproj">
-      <Project>{338f614c-4cd7-418a-bd31-8c6a8690cfbf}</Project>
-      <Name>QuantConnect.Interfaces</Name>
     </ProjectReference>
     <ProjectReference Include="..\Common\QuantConnect.csproj">
       <Project>{2545c0b4-fabb-49c9-8dd1-9ad7ee23f86b}</Project>

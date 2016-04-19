@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
 using System;
 using QuantConnect.Interfaces;
 using QuantConnect.Packets;
@@ -61,8 +62,9 @@ namespace QuantConnect.Api
         /// Get the algorithm status from the user with this algorithm id.
         /// </summary>
         /// <param name="algorithmId">String algorithm id we're searching for.</param>
+        /// <param name="userId">The user id of the algorithm</param>
         /// <returns>Algorithm status enum</returns>
-        public AlgorithmControl GetAlgorithmStatus(string algorithmId)
+        public AlgorithmControl GetAlgorithmStatus(string algorithmId, int userId)
         {
             return new AlgorithmControl();
         }
@@ -130,6 +132,21 @@ namespace QuantConnect.Api
             //
         }
 
+        /// <summary>
+        /// Send an email to the user associated with the specified algorithm id
+        /// </summary>
+        /// <param name="algorithmId">The algorithm id</param>
+        /// <param name="subject">The email subject</param>
+        /// <param name="body">The email message body</param>
+        public void SendUserEmail(string algorithmId, string subject, string body)
+        {
+            //
+        }
+
+        /// <summary>
+        /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
+        /// </summary>
+        /// <filterpriority>2</filterpriority>
         public void Dispose()
         {
             // NOP

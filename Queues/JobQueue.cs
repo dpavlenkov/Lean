@@ -14,7 +14,9 @@
 */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json;
 using QuantConnect.Configuration;
 using QuantConnect.Interfaces;
 using QuantConnect.Logging;
@@ -61,6 +63,14 @@ namespace QuantConnect.Queues
             location = AlgorithmLocation;
             Log.Trace("JobQueue.NextJob(): Selected " + location);
 
+            // check for parameters in the config
+            var parameters = new Dictionary<string, string>();
+            var parametersConfigString = Config.Get("parameters");
+            if (parametersConfigString != string.Empty)
+            {
+                parameters = JsonConvert.DeserializeObject<Dictionary<string, string>>(parametersConfigString);
+            }
+
             //If this isn't a backtesting mode/request, attempt a live job.
             if (_liveMode)
             {
@@ -73,7 +83,8 @@ namespace QuantConnect.Queues
                     UserId = Config.GetInt("job-user-id"),
                     Version = Constants.Version,
                     DeployId = Config.Get("algorithm-type-name"),
-                    RamAllocation = int.MaxValue
+                    RamAllocation = int.MaxValue,
+                    Parameters = parameters
                 };
 
                 try
@@ -84,7 +95,7 @@ namespace QuantConnect.Queues
                 }
                 catch (Exception err)
                 {
-                    Log.Error(string.Format("JobQueue.NextJob(): Error resoliving BrokerageData for live job for brokerage {0}. {1}", liveJob.Brokerage, err.Message));
+                    Log.Error(err, string.Format("Error resolving BrokerageData for live job for brokerage {0}:", liveJob.Brokerage));
                 }
 
                 return liveJob;
@@ -98,7 +109,8 @@ namespace QuantConnect.Queues
                 Version = Constants.Version,
                 BacktestId = Config.Get("algorithm-type-name"),
                 RamAllocation = int.MaxValue,
-                Language = (Language)Enum.Parse(typeof(Language), Config.Get("algorithm-language"))
+                Language = (Language)Enum.Parse(typeof(Language), Config.Get("algorithm-language")),
+                Parameters = parameters
             };
 
             return backtestJob;

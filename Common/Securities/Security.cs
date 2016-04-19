@@ -14,9 +14,12 @@
 */
 
 using System;
-using System.Text.RegularExpressions;
 using QuantConnect.Data;
 using QuantConnect.Data.Market;
+using QuantConnect.Orders;
+using QuantConnect.Orders.Fees;
+using QuantConnect.Orders.Fills;
+using QuantConnect.Orders.Slippage;
 using QuantConnect.Securities.Equity;
 using QuantConnect.Securities.Forex;
 using QuantConnect.Securities.Interfaces;
@@ -34,18 +37,16 @@ namespace QuantConnect.Securities
     {
         private LocalTimeKeeper _localTimeKeeper;
 
-        private readonly string _symbol;
-        private readonly bool _isDynamicallyLoadedData;
         private readonly SubscriptionDataConfig _config;
 
         /// <summary>
-        /// String symbol for the asset.
+        /// <see cref="Symbol"/> for the asset.
         /// </summary>
-        public string Symbol 
+        public Symbol Symbol 
         {
             get 
             {
-                return _symbol;
+                return _config.Symbol;
             }
         }
         
@@ -168,7 +169,50 @@ namespace QuantConnect.Securities
         /// <seealso cref="ForexTransactionModel"/>
         public ISecurityTransactionModel TransactionModel
         {
-            get;
+            // these methods provided for backwards compatibility
+            get
+            {
+                // check if the FillModel/FeeModel/Slippage models are all the same reference
+                if (FillModel is ISecurityTransactionModel 
+                 && ReferenceEquals(FillModel, FeeModel)
+                 && ReferenceEquals(FeeModel, SlippageModel))
+                {
+                    return (ISecurityTransactionModel) FillModel;
+                }
+                return new SecurityTransactionModel(FillModel, FeeModel, SlippageModel);
+            }
+            set
+            {
+                FeeModel = value;
+                FillModel = value;
+                SlippageModel = value;
+            }
+        }
+
+        /// <summary>
+        /// Fee model used to compute order fees for this security
+        /// </summary>
+        public IFeeModel FeeModel
+        {
+            get; 
+            set;
+        }
+
+        /// <summary>
+        /// Fill model used to produce fill events for this security
+        /// </summary>
+        public IFillModel FillModel
+        {
+            get; 
+            set;
+        }
+
+        /// <summary>
+        /// Slippage model use to compute slippage of market orders
+        /// </summary>
+        public ISlippageModel SlippageModel
+        {
+            get; 
             set;
         }
 
@@ -191,6 +235,15 @@ namespace QuantConnect.Securities
         }
 
         /// <summary>
+        /// Gets the settlement model used for this security
+        /// </summary>
+        public ISettlementModel SettlementModel
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
         /// Customizable data filter to filter outlier ticks before they are passed into user event handlers. 
         /// By default all ticks are passed into the user algorithms.
         /// </summary>
@@ -206,11 +259,9 @@ namespace QuantConnect.Securities
         /// <summary>
         /// Construct a new security vehicle based on the user options.
         /// </summary>
-        public Security(SecurityExchangeHours exchangeHours, SubscriptionDataConfig config, decimal leverage, bool isDynamicallyLoadedData = false) 
+        public Security(SecurityExchangeHours exchangeHours, SubscriptionDataConfig config, decimal leverage) 
         {
             _config = config;
-            _symbol = config.Symbol;
-            _isDynamicallyLoadedData = isDynamicallyLoadedData;
 
             Cache = new SecurityCache();
             Exchange = new SecurityExchange(exchangeHours);
@@ -218,6 +269,7 @@ namespace QuantConnect.Securities
             PortfolioModel = new SecurityPortfolioModel();
             TransactionModel = new SecurityTransactionModel();
             MarginModel = new SecurityMarginModel(leverage);
+            SettlementModel = new ImmediateSettlementModel();
             Holdings = new SecurityHolding(this);
         }
 
@@ -284,17 +336,6 @@ namespace QuantConnect.Securities
             get
             {
                 return Holdings.Leverage;
-            }
-        }
-
-        /// <summary>
-        /// Use QuantConnect data source flag, or is the security a user imported object
-        /// </summary>
-        public virtual bool IsDynamicallyLoadedData 
-        {
-            get
-            {
-                return _isDynamicallyLoadedData;
             }
         }
 
@@ -430,6 +471,18 @@ namespace QuantConnect.Securities
         public void SetDataNormalizationMode(DataNormalizationMode mode)
         {
             _config.DataNormalizationMode = mode;
+        }
+
+        /// <summary>
+        /// Returns a string that represents the current object.
+        /// </summary>
+        /// <returns>
+        /// A string that represents the current object.
+        /// </returns>
+        /// <filterpriority>2</filterpriority>
+        public override string ToString()
+        {
+            return Symbol.ToString();
         }
     }
 }

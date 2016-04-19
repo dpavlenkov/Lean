@@ -36,14 +36,6 @@ namespace QuantConnect.Orders
         }
 
         /// <summary>
-        /// Value of the order at limit price if a limit order
-        /// </summary>
-        public override decimal Value
-        {
-            get { return Quantity*LimitPrice; }
-        }
-
-        /// <summary>
         /// Added a default constructor for JSON Deserialization:
         /// </summary>
         public LimitOrder()
@@ -59,7 +51,7 @@ namespace QuantConnect.Orders
         /// <param name="time">Time the order was placed</param>
         /// <param name="limitPrice">Price the order should be filled at if a limit order</param>
         /// <param name="tag">User defined data tag for this order</param>
-        public LimitOrder(string symbol, int quantity, decimal limitPrice, DateTime time, string tag = "", SecurityType type = SecurityType.Base)
+        public LimitOrder(Symbol symbol, int quantity, decimal limitPrice, DateTime time, string tag = "", SecurityType type = SecurityType.Base)
             : base(symbol, quantity, time, tag, type)
         {
             LimitPrice = limitPrice;
@@ -78,7 +70,19 @@ namespace QuantConnect.Orders
         /// <returns>The value of this order given the current market price</returns>
         public override decimal GetValue(decimal currentMarketPrice)
         {
-            return Quantity*LimitPrice;
+            // selling, so higher price will be used
+            if (Quantity < 0)
+            {
+                return Math.Max(LimitPrice, currentMarketPrice);
+            }
+
+            // buying, so lower price will be used
+            if (Quantity > 0)
+            {
+                return Math.Min(LimitPrice, currentMarketPrice);
+            }
+
+            return 0m;
         }
 
         /// <summary>

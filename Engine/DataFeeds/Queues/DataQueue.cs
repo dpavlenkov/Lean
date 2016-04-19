@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
 using System;
 using System.Collections.Generic;
 using QuantConnect.Data;
@@ -37,7 +38,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Queues
         /// <summary>
         /// Desktop/Local doesn't support live data from this handler
         /// </summary>
-        public virtual void Subscribe(LiveNodePacket job, IDictionary<SecurityType, List<string>> symbols)
+        public virtual void Subscribe(LiveNodePacket job, IEnumerable<Symbol> symbols)
         {
             throw new NotImplementedException("QuantConnect.Queues.LiveDataQueue has not implemented live data.");
         }
@@ -45,7 +46,7 @@ namespace QuantConnect.Lean.Engine.DataFeeds.Queues
         /// <summary>
         /// Desktop/Local doesn't support live data from this handler
         /// </summary>
-        public virtual void Unsubscribe(LiveNodePacket job, IDictionary<SecurityType, List<string>> symbols)
+        public virtual void Unsubscribe(LiveNodePacket job, IEnumerable<Symbol> symbols)
         {
             throw new NotImplementedException("QuantConnect.Queues.LiveDataQueue has not implemented live data.");
         }

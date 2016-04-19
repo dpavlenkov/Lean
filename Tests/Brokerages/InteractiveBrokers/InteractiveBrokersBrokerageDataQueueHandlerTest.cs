@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -30,13 +31,10 @@ namespace QuantConnect.Tests.Brokerages.InteractiveBrokers
         {
             InteractiveBrokersGatewayRunner.StartFromConfiguration();
             
-            var ib = new InteractiveBrokersBrokerage(new OrderProvider());
+            var ib = new InteractiveBrokersBrokerage(new OrderProvider(), new SecurityProvider());
             ib.Connect();
 
-            ib.Subscribe(null, new Dictionary<SecurityType, List<string>>
-            {
-                {SecurityType.Forex, new List<string>{"USDJPY", "EURGBP"}}
-            });
+            ib.Subscribe(null, new List<Symbol> {Symbols.USDJPY, Symbols.EURGBP});
             
             Thread.Sleep(1000);
 

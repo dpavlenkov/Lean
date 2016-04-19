@@ -126,7 +126,7 @@ namespace QuantConnect.Tests.Common
             // it was also respect the latest value
 
             Assert.AreEqual(2, sampled.Values.Count);
-            foreach (var pair in series.Values.Skip(1).Zip(sampled.Values, Tuple.Create))
+            foreach (var pair in series.Values.Skip(1).Zip<ChartPoint, ChartPoint, Tuple<ChartPoint, ChartPoint>>(sampled.Values, Tuple.Create))
             {
                 Assert.AreEqual(pair.Item1.x, pair.Item2.x);
                 Assert.AreEqual(pair.Item1.y, pair.Item2.y);
@@ -136,7 +136,7 @@ namespace QuantConnect.Tests.Common
         [Test]
         public void DoesNotSampleScatterPlots()
         {
-            var scatter = new Series("scatter", SeriesType.Scatter);
+            var scatter = new Series("scatter", SeriesType.Scatter, 0, "$");
             scatter.AddPoint(DateTime.Today, 1m);
             scatter.AddPoint(DateTime.Today, 3m);
             scatter.AddPoint(DateTime.Today.AddSeconds(1), 1.5m);
@@ -144,7 +144,7 @@ namespace QuantConnect.Tests.Common
 
             var sampler = new SeriesSampler(TimeSpan.FromMilliseconds(1));
             var sampled = sampler.Sample(scatter, DateTime.Today, DateTime.Today.AddDays(1));
-            foreach (var pair in scatter.Values.Zip(sampled.Values, Tuple.Create))
+            foreach (var pair in scatter.Values.Zip<ChartPoint, ChartPoint, Tuple<ChartPoint, ChartPoint>>(sampled.Values, Tuple.Create))
             {
                 Assert.AreEqual(pair.Item1.x, pair.Item2.x);
                 Assert.AreEqual(pair.Item1.y, pair.Item2.y);

@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 */
+
 using System;
 using QuantConnect.Logging;
 using QuantConnect.Orders;
@@ -49,10 +50,9 @@ namespace QuantConnect.Securities
                 security.Holdings.AddNewSale(fill.FillPrice * Convert.ToDecimal(fill.AbsoluteFillQuantity));
 
                 //Get the Fee for this Order - Update the Portfolio Cash Balance: Remove Transacion Fees.
-                var order = new MarketOrder(security.Symbol, fill.FillQuantity, security.LocalTime.ConvertToUtc(security.Exchange.TimeZone), type: security.Type) {Price = fill.FillPrice, Status = OrderStatus.Filled};
-                var feeThisOrder = Math.Abs(security.TransactionModel.GetOrderFee(security, order));
+                var feeThisOrder = Math.Abs(fill.OrderFee);
                 security.Holdings.AddNewFee(feeThisOrder);
-                portfolio.CashBook[CashBook.AccountCurrency].Quantity -= feeThisOrder;
+                portfolio.CashBook[CashBook.AccountCurrency].AddAmount(-feeThisOrder);
 
 
                 //Calculate & Update the Last Trade Profit
@@ -96,7 +96,9 @@ namespace QuantConnect.Securities
                     portfolio.AddTransactionRecord(security.LocalTime.ConvertToUtc(security.Exchange.TimeZone), lastTradeProfit - 2 * feeThisOrder);
                 }
 
-                portfolio.CashBook[CashBook.AccountCurrency].Quantity -= (fill.FillPrice * Convert.ToDecimal(fill.FillQuantity));
+                // Apply the funds using the current settlement model
+                var amount = fill.FillPrice * Convert.ToDecimal(fill.FillQuantity);
+                security.SettlementModel.ApplyFunds(portfolio, security, fill.UtcTime, CashBook.AccountCurrency, -amount);
 
                 //UPDATE HOLDINGS QUANTITY, AVG PRICE:
                 //Currently NO holdings. The order is ALL our holdings.
@@ -164,7 +166,7 @@ namespace QuantConnect.Securities
             }
             catch (Exception err)
             {
-                Log.Error("SecurityPortfolioModel.ProcessFill(): " + err.Message);
+                Log.Error(err);
             }
 
             //Set the results back to the vehicle.

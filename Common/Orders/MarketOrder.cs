@@ -38,14 +38,6 @@ namespace QuantConnect.Orders
         }
 
         /// <summary>
-        /// Value of the order at market price.
-        /// </summary>
-        public override decimal Value
-        {
-            get { return Convert.ToDecimal(Quantity)*Price; }
-        }
-
-        /// <summary>
         /// New market order constructor
         /// </summary>
         /// <param name="symbol">Symbol asset we're seeking to trade</param>
@@ -53,7 +45,7 @@ namespace QuantConnect.Orders
         /// <param name="quantity">Quantity of the asset we're seeking to trade</param>
         /// <param name="time">Time the order was placed</param>
         /// <param name="tag">User defined data tag for this order</param>
-        public MarketOrder(string symbol, int quantity, DateTime time, string tag = "", SecurityType type = SecurityType.Base)
+        public MarketOrder(Symbol symbol, int quantity, DateTime time, string tag = "", SecurityType type = SecurityType.Base)
             : base(symbol, quantity, time, tag, type)
         {
         }

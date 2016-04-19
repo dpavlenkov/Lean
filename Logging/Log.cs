@@ -14,9 +14,9 @@
 */
 
 using System;
-using System.Threading;
-using System.Text;
 using System.Collections;
+using System.Text;
+using System.Threading;
 
 namespace QuantConnect.Logging 
 {
@@ -84,14 +84,9 @@ namespace QuantConnect.Logging
         /// <param name="exception">The exception to be logged</param>
         /// <param name="message">An optional message to be logged, if null/whitespace the messge text will be extracted</param>
         /// <param name="overrideMessageFloodProtection">Force sending a message, overriding the "do not flood" directive</param>
-        public static void Error(string method, Exception exception, string message = null, bool overrideMessageFloodProtection = false)
+        private static void Error(string method, Exception exception, string message = null, bool overrideMessageFloodProtection = false)
         {
-            message = message ?? method + "(): " + AggregateExceptionMessage(exception);
-            var stack = AggregateStackTrace(exception);
-            if (!string.IsNullOrEmpty(stack))
-            {
-                message += Environment.NewLine + stack;
-            }
+            message = method + "(): " + (message ?? string.Empty) + " " + exception;
             Error(message, overrideMessageFloodProtection);
         }
 
@@ -103,7 +98,6 @@ namespace QuantConnect.Logging
         /// <param name="overrideMessageFloodProtection">Force sending a message, overriding the "do not flood" directive</param>
         public static void Error(Exception exception, string message = null, bool overrideMessageFloodProtection = false)
         {
-            message = message == null ? exception.Message : message + "\t-\t" + exception.Message;
             Error(WhoCalledMe.GetMethodName(1), exception, message, overrideMessageFloodProtection);
         }
 
@@ -122,6 +116,22 @@ namespace QuantConnect.Logging
             {
                 Console.WriteLine("Log.Trace(): Error writing trace: "  +err.Message);
             }
+        }
+
+        /// <summary>
+        /// Writes the message in normal text
+        /// </summary>
+        public static void Trace(string format, params object[] args)
+        {
+            Trace(string.Format(format, args));
+        }
+
+        /// <summary>
+        /// Writes the message in red
+        /// </summary>
+        public static void Error(string format, params object[] args)
+        {
+            Error(string.Format(format, args));
         }
 
         /// <summary>
@@ -237,28 +247,6 @@ namespace QuantConnect.Logging
             }
 
             return result.ToString();
-        }
-
-        private static string AggregateExceptionMessage(Exception exception)
-        {
-            var sb = new StringBuilder();
-            while (exception != null)
-            {
-                sb.Append(exception.Message);
-                exception = exception.InnerException;
-            }
-            return sb.ToString();
-        }
-
-        private static string AggregateStackTrace(Exception exception)
-        {
-            var sb = new StringBuilder();
-            while (exception != null)
-            {
-                sb.AppendLine(exception.StackTrace);
-                exception = exception.InnerException;
-            }
-            return sb.ToString();
         }
     }
 }

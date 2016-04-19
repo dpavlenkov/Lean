@@ -14,8 +14,8 @@
 */
 
 using System;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
 using QuantConnect.Data;
 using QuantConnect.Indicators;
 
@@ -181,7 +181,7 @@ namespace QuantConnect.Algorithm
                 }
 
                 //If we don't have the series, create it:
-                thisChart.AddSeries(new Series(series));
+                thisChart.AddSeries(new Series(series, SeriesType.Line, 0, "$"));
             }
 
             var thisSeries = thisChart.Series[series];

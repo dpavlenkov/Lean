@@ -21,11 +21,13 @@ using QuantConnect.AlgorithmFactory;
 using QuantConnect.Brokerages.Backtesting;
 using QuantConnect.Configuration;
 using QuantConnect.Interfaces;
+using QuantConnect.Lean.Engine.RealTime;
 using QuantConnect.Lean.Engine.Results;
 using QuantConnect.Lean.Engine.TransactionHandlers;
 using QuantConnect.Logging;
 using QuantConnect.Packets;
 using QuantConnect.Securities;
+using QuantConnect.Util;
 
 namespace QuantConnect.Lean.Engine.Setup
 {
@@ -94,6 +96,17 @@ namespace QuantConnect.Lean.Engine.Setup
         }
 
         /// <summary>
+        /// Creates a new <see cref="BacktestingBrokerage"/> instance
+        /// </summary>
+        /// <param name="algorithmNodePacket">Job packet</param>
+        /// <param name="uninitializedAlgorithm">The algorithm instance before Initialize has been called</param>
+        /// <returns>The brokerage instance, or throws if error creating instance</returns>
+        public IBrokerage CreateBrokerage(AlgorithmNodePacket algorithmNodePacket, IAlgorithm uninitializedAlgorithm)
+        {
+            return new BacktestingBrokerage(uninitializedAlgorithm);
+        }
+
+        /// <summary>
         /// Setup the algorithm cash, dates and portfolio as desired.
         /// </summary>
         /// <param name="algorithm">Existing algorithm instance</param>
@@ -101,8 +114,9 @@ namespace QuantConnect.Lean.Engine.Setup
         /// <param name="baseJob">Backtesting job</param>
         /// <param name="resultHandler">The configured result handler</param>
         /// <param name="transactionHandler">The configuration transaction handler</param>
+        /// <param name="realTimeHandler">The configured real time handler</param>
         /// <returns>Boolean true on successfully setting up the console.</returns>
-        public bool Setup(IAlgorithm algorithm, out IBrokerage brokerage, AlgorithmNodePacket baseJob, IResultHandler resultHandler, ITransactionHandler transactionHandler)
+        public bool Setup(IAlgorithm algorithm, IBrokerage brokerage, AlgorithmNodePacket baseJob, IResultHandler resultHandler, ITransactionHandler transactionHandler, IRealTimeHandler realTimeHandler)
         {
             var initializeComplete = false;
 
@@ -113,15 +127,19 @@ namespace QuantConnect.Lean.Engine.Setup
                 if (baseJob.Type == PacketType.BacktestNode)
                 {
                     var backtestJob = baseJob as BacktestNodePacket;
-                    
-                    //Set the limits on the algorithm assets (for local no limits)
-                    algorithm.SetAssetLimits(999, 999, 999);
-                    algorithm.SetMaximumOrders(int.MaxValue);
 
+                    //Set our default markets
+                    algorithm.SetDefaultMarkets(BacktestingBrokerageFactory.DefaultMarketMap.ToDictionary());
+                    algorithm.SetMaximumOrders(int.MaxValue);
+                    // set our parameters
+                    algorithm.SetParameters(baseJob.Parameters);
+                    algorithm.SetLiveMode(false);
+                    //Set the source impl for the event scheduling
+                    algorithm.Schedule.SetEventSchedule(realTimeHandler);
                     //Setup Base Algorithm:
                     algorithm.Initialize();
-                    //Add currency data feeds that weren't explicity added in Initialize
-                    algorithm.Portfolio.CashBook.EnsureCurrencyDataFeeds(algorithm.Securities, algorithm.SubscriptionManager, SecurityExchangeHoursProvider.FromDataFolder());
+                    //Set the time frontier of the algorithm
+                    algorithm.SetDateTime(algorithm.StartDate.ConvertToUtc(algorithm.TimeZone));
 
                     //Construct the backtest job packet:
                     backtestJob.PeriodStart = algorithm.StartDate;
@@ -141,7 +159,7 @@ namespace QuantConnect.Lean.Engine.Setup
             }
             catch (Exception err)
             {
-                Log.Error("ConsoleSetupHandler().Setup(): " + err.Message);
+                Log.Error(err);
                 Errors.Add("Failed to initialize algorithm: Initialize(): " + err.Message);
             }
 
@@ -150,26 +168,12 @@ namespace QuantConnect.Lean.Engine.Setup
                 initializeComplete = true;
             }
 
-            // we need to do this after algorithm initialization
-            brokerage = new BacktestingBrokerage(algorithm);
-
-            // set the transaction models base on the requested brokerage properties
-            SetupHandler.UpdateTransactionModels(algorithm, algorithm.BrokerageModel);
+            // set the transaction and settlement models based on the brokerage properties
+            algorithm.UpdateModels(algorithm.BrokerageModel);
             algorithm.Transactions.SetOrderProcessor(transactionHandler);
+            algorithm.PostInitialize();
 
             return initializeComplete;
-        }
-
-        /// <summary>
-        /// Error handlers in event of a brokerage error.
-        /// </summary>
-        /// <param name="results">Result handler for sending results on error.</param>
-        /// <param name="brokerage">Brokerage instance</param>
-        /// <remarks>Not used for local setup.</remarks>
-        /// <returns>Boolean true on successfully setting up local algorithm</returns>
-        public bool SetupErrorHandler(IResultHandler results, IBrokerage brokerage)
-        {
-            return true;
         }
 
         /// <summary>
@@ -189,10 +193,15 @@ namespace QuantConnect.Lean.Engine.Setup
                 || currentTypeFullName.Substring(currentTypeFullName.LastIndexOf('.') + 1) == expectedTypeName;
         }
 
+        /// <summary>
+        /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
+        /// </summary>
+        /// <filterpriority>2</filterpriority>
         public void Dispose()
         {
             // nothing to clean up
         }
+
     } // End Result Handler Thread:
 
 } // End Namespace

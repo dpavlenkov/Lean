@@ -16,10 +16,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 using QuantConnect.Securities;
-using QuantConnect.Util;
 
 namespace QuantConnect.Orders
 {
@@ -31,14 +29,19 @@ namespace QuantConnect.Orders
     {
         private readonly object _orderEventsLock = new object();
         private readonly object _updateRequestsLock = new object();
+        private readonly object _setCancelRequestLock = new object();
 
         private Order _order;
         private OrderStatus? _orderStatusOverride;
         private CancelOrderRequest _cancelRequest;
 
+        private int _quantityFilled;
+        private decimal _averageFillPrice;
+
         private readonly int _orderId;
         private readonly List<OrderEvent> _orderEvents; 
         private readonly SubmitOrderRequest _submitRequest;
+        private readonly ManualResetEvent _orderFilledEvent;
         private readonly List<UpdateOrderRequest> _updateRequests;
 
         // we pull this in to provide some behavior/simplicity to the ticket API
@@ -67,7 +70,7 @@ namespace QuantConnect.Orders
         /// <summary>
         /// Gets the symbol being ordered
         /// </summary>
-        public string Symbol
+        public Symbol Symbol
         {
             get { return _submitRequest.Symbol; }
         }
@@ -86,6 +89,24 @@ namespace QuantConnect.Orders
         public int Quantity
         {
             get { return _order == null ? _submitRequest.Quantity : _order.Quantity; }
+        }
+
+        /// <summary>
+        /// Gets the average fill price for this ticket. If no fills have been processed
+        /// then this will return a value of zero.
+        /// </summary>
+        public decimal AverageFillPrice
+        {
+            get { return _averageFillPrice; }
+        }
+
+        /// <summary>
+        /// Gets the total qantity filled for this ticket. If no fills have been processed
+        /// then this will return a value of zero.
+        /// </summary>
+        public decimal QuantityFilled
+        {
+            get { return _quantityFilled; }
         }
 
         /// <summary>
@@ -159,6 +180,14 @@ namespace QuantConnect.Orders
         }
 
         /// <summary>
+        /// Gets a wait handle that can be used to wait until this order has filled
+        /// </summary>
+        public WaitHandle OrderFilled
+        {
+            get { return _orderFilledEvent; }
+        }
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="OrderTicket"/> class
         /// </summary>
         /// <param name="transactionManager">The transaction manager used for submitting updates and cancels for this ticket</param>
@@ -171,119 +200,7 @@ namespace QuantConnect.Orders
 
             _orderEvents = new List<OrderEvent>();
             _updateRequests = new List<UpdateOrderRequest>();
-        }
-
-        /// <summary>
-        /// Updates the internal order object with the current state
-        /// </summary>
-        /// <param name="order">The order</param>
-        public void SetOrder(Order order)
-        {
-            if (_order != null && _order.Id != order.Id)
-            {
-                throw new ArgumentException("Order id mismatch");
-            }
-
-            _order = order;
-        }
-
-        /// <summary>
-        /// Gets the most recent <see cref="OrderResponse"/> for this ticket
-        /// </summary>
-        /// <returns>The most recent <see cref="OrderResponse"/> for this ticket</returns>
-        public OrderResponse GetMostRecentOrderResponse()
-        {
-            return GetMostRecentOrderRequest().Response;
-        }
-
-        /// <summary>
-        /// Gets the most recent <see cref="OrderRequest"/> for this ticket
-        /// </summary>
-        /// <returns>The most recent <see cref="OrderRequest"/> for this ticket</returns>
-        public OrderRequest GetMostRecentOrderRequest()
-        {
-            if (CancelRequest != null)
-            {
-                return CancelRequest;
-            }
-            var lastUpdate = _updateRequests.LastOrDefault();
-            if (lastUpdate != null)
-            {
-                return lastUpdate;
-            }
-            return SubmitRequest;
-        }
-
-        /// <summary>
-        /// Adds a new <see cref="UpdateOrderRequest"/> to this ticket.
-        /// </summary>
-        /// <param name="request">The recently processed <see cref="UpdateOrderRequest"/></param>
-        public void AddUpdateRequest(UpdateOrderRequest request)
-        {
-            if (request.OrderId != OrderId)
-            {
-                throw new ArgumentException("Received UpdateOrderRequest for incorrect order id.");
-            }
-            if (_cancelRequest != null)
-            {
-                throw new ArgumentException("Unable to add update requests to canceled order ticket.");
-            }
-
-            lock (_updateRequestsLock)
-            {
-                _updateRequests.Add(request);
-            }
-        }
-
-        /// <summary>
-        /// Sets the <see cref="CancelOrderRequest"/> for this ticket. This can only be performed once.
-        /// </summary>
-        /// <param name="request">The <see cref="CancelOrderRequest"/> that canceled this ticket.</param>
-        public void SetCancelRequest(CancelOrderRequest request)
-        {
-            if (request.OrderId != OrderId)
-            {
-                throw new ArgumentException("Received CancelOrderRequest for incorrect order id.");
-            }
-            if (_cancelRequest != null)
-            {
-                throw new ArgumentException("This order ticket has already been canceled.");
-            }
-            _cancelRequest = request;
-        }
-
-        /// <summary>
-        /// Submits an <see cref="UpdateOrderRequest"/> with the <see cref="SecurityTransactionManager"/> to update
-        /// the ticket with data specified in <paramref name="fields"/>
-        /// </summary>
-        /// <param name="fields">Defines what properties of the order should be updated</param>
-        /// <returns>The <see cref="OrderResponse"/> from updating the order</returns>
-        public OrderResponse Update(UpdateOrderFields fields)
-        {
-            _transactionManager.UpdateOrder(new UpdateOrderRequest(_transactionManager.UtcTime, SubmitRequest.OrderId, fields));
-            return _updateRequests.Last().Response;
-        }
-
-        /// <summary>
-        /// Submits a new request to cancel this order
-        /// </summary>
-        public OrderResponse Cancel(string tag = null)
-        {
-            var request = new CancelOrderRequest(_transactionManager.UtcTime, OrderId, tag);
-            _transactionManager.ProcessRequest(request);
-            return CancelRequest.Response;
-        }
-
-        /// <summary>
-        /// Adds an order event to this ticket
-        /// </summary>
-        /// <param name="orderEvent">The order event to be added</param>
-        public void AddOrderEvent(OrderEvent orderEvent)
-        {
-            lock (_orderEventsLock)
-            {
-                _orderEvents.Add(orderEvent);
-            }
+            _orderFilledEvent = new ManualResetEvent(false);
         }
 
         /// <summary>
@@ -317,7 +234,7 @@ namespace QuantConnect.Orders
                         return AccessOrder<StopMarketOrder>(this, field, o => o.StopPrice, r => r.StopPrice);
                     }
                     break;
-                
+
                 default:
                     throw new ArgumentOutOfRangeException("field", field, null);
             }
@@ -325,15 +242,146 @@ namespace QuantConnect.Orders
         }
 
         /// <summary>
+        /// Submits an <see cref="UpdateOrderRequest"/> with the <see cref="SecurityTransactionManager"/> to update
+        /// the ticket with data specified in <paramref name="fields"/>
+        /// </summary>
+        /// <param name="fields">Defines what properties of the order should be updated</param>
+        /// <returns>The <see cref="OrderResponse"/> from updating the order</returns>
+        public OrderResponse Update(UpdateOrderFields fields)
+        {
+            _transactionManager.UpdateOrder(new UpdateOrderRequest(_transactionManager.UtcTime, SubmitRequest.OrderId, fields));
+            return _updateRequests.Last().Response;
+        }
+
+        /// <summary>
+        /// Submits a new request to cancel this order
+        /// </summary>
+        public OrderResponse Cancel(string tag = null)
+        {
+            var request = new CancelOrderRequest(_transactionManager.UtcTime, OrderId, tag);
+            _transactionManager.ProcessRequest(request);
+            return CancelRequest.Response;
+        }
+
+        /// <summary>
+        /// Gets the most recent <see cref="OrderResponse"/> for this ticket
+        /// </summary>
+        /// <returns>The most recent <see cref="OrderResponse"/> for this ticket</returns>
+        public OrderResponse GetMostRecentOrderResponse()
+        {
+            return GetMostRecentOrderRequest().Response;
+        }
+
+        /// <summary>
+        /// Gets the most recent <see cref="OrderRequest"/> for this ticket
+        /// </summary>
+        /// <returns>The most recent <see cref="OrderRequest"/> for this ticket</returns>
+        public OrderRequest GetMostRecentOrderRequest()
+        {
+            if (CancelRequest != null)
+            {
+                return CancelRequest;
+            }
+            var lastUpdate = _updateRequests.LastOrDefault();
+            if (lastUpdate != null)
+            {
+                return lastUpdate;
+            }
+            return SubmitRequest;
+        }
+
+        /// <summary>
+        /// Adds an order event to this ticket
+        /// </summary>
+        /// <param name="orderEvent">The order event to be added</param>
+        internal void AddOrderEvent(OrderEvent orderEvent)
+        {
+            lock (_orderEventsLock)
+            {
+                _orderEvents.Add(orderEvent);
+                if (orderEvent.FillQuantity != 0)
+                {
+                    // keep running totals of quantity filled and the average fill price so we
+                    // don't need to compute these on demand
+                    _quantityFilled += orderEvent.FillQuantity;
+                    var quantityWeightedFillPrice = _orderEvents.Where(x => x.Status.IsFill()).Sum(x => x.AbsoluteFillQuantity*x.FillPrice);
+                    _averageFillPrice = quantityWeightedFillPrice/Math.Abs(_quantityFilled);
+                }
+            }
+
+            // fire the wait handle indicating this order is filled
+            if (orderEvent.Status == OrderStatus.Filled)
+            {
+                _orderFilledEvent.Set();
+            }
+        }
+
+        /// <summary>
+        /// Updates the internal order object with the current state
+        /// </summary>
+        /// <param name="order">The order</param>
+        internal void SetOrder(Order order)
+        {
+            if (_order != null && _order.Id != order.Id)
+            {
+                throw new ArgumentException("Order id mismatch");
+            }
+
+            _order = order;
+        }
+
+        /// <summary>
+        /// Adds a new <see cref="UpdateOrderRequest"/> to this ticket.
+        /// </summary>
+        /// <param name="request">The recently processed <see cref="UpdateOrderRequest"/></param>
+        internal void AddUpdateRequest(UpdateOrderRequest request)
+        {
+            if (request.OrderId != OrderId)
+            {
+                throw new ArgumentException("Received UpdateOrderRequest for incorrect order id.");
+            }
+
+            lock (_updateRequestsLock)
+            {
+                _updateRequests.Add(request);
+            }
+        }
+
+        /// <summary>
+        /// Sets the <see cref="CancelOrderRequest"/> for this ticket. This can only be performed once.
+        /// </summary>
+        /// <remarks>
+        /// This method is thread safe.
+        /// </remarks>
+        /// <param name="request">The <see cref="CancelOrderRequest"/> that canceled this ticket.</param>
+        /// <returns>False if the the CancelRequest has already been set, true if this call set it</returns>
+        internal bool TrySetCancelRequest(CancelOrderRequest request)
+        {
+            if (request.OrderId != OrderId)
+            {
+                throw new ArgumentException("Received CancelOrderRequest for incorrect order id.");
+            }
+            lock (_setCancelRequestLock)
+            {
+                if (_cancelRequest != null)
+                {
+                    return false;
+                }
+                _cancelRequest = request;
+            }
+            return true;
+        }
+
+        /// <summary>
         /// Creates a new <see cref="OrderTicket"/> that represents trying to cancel an order for which no ticket exists
         /// </summary>
         public static OrderTicket InvalidCancelOrderId(SecurityTransactionManager transactionManager, CancelOrderRequest request)
         {
-            var submit = new SubmitOrderRequest(OrderType.Market, SecurityType.Base, string.Empty, 0, 0, 0, DateTime.MaxValue, string.Empty);
+            var submit = new SubmitOrderRequest(OrderType.Market, SecurityType.Base, Symbol.Empty, 0, 0, 0, DateTime.MaxValue, string.Empty);
             submit.SetResponse(OrderResponse.UnableToFindOrder(request));
             var ticket = new OrderTicket(transactionManager, submit);
             request.SetResponse(OrderResponse.UnableToFindOrder(request));
-            ticket.SetCancelRequest(request);
+            ticket.TrySetCancelRequest(request);
             ticket._orderStatusOverride = OrderStatus.Invalid;
             return ticket;
         }
@@ -343,7 +391,7 @@ namespace QuantConnect.Orders
         /// </summary>
         public static OrderTicket InvalidUpdateOrderId(SecurityTransactionManager transactionManager, UpdateOrderRequest request)
         {
-            var submit = new SubmitOrderRequest(OrderType.Market, SecurityType.Base, string.Empty, 0, 0, 0, DateTime.MaxValue, string.Empty);
+            var submit = new SubmitOrderRequest(OrderType.Market, SecurityType.Base, Symbol.Empty, 0, 0, 0, DateTime.MaxValue, string.Empty);
             submit.SetResponse(OrderResponse.UnableToFindOrder(request));
             var ticket = new OrderTicket(transactionManager, submit);
             request.SetResponse(OrderResponse.UnableToFindOrder(request));
@@ -359,6 +407,17 @@ namespace QuantConnect.Orders
         {
             request.SetResponse(response);
             return new OrderTicket(transactionManager, request) { _orderStatusOverride = OrderStatus.Invalid };
+        }
+
+        /// <summary>
+        /// Creates a new <see cref="OrderTicket"/> that is invalidated because the algorithm was in the middle of warm up still
+        /// </summary>
+        public static OrderTicket InvalidWarmingUp(SecurityTransactionManager transactionManager, SubmitOrderRequest submit)
+        {
+            submit.SetResponse(OrderResponse.WarmingUp(submit));
+            var ticket = new OrderTicket(transactionManager, submit);
+            ticket._orderStatusOverride = OrderStatus.Invalid;
+            return ticket;
         }
 
         /// <summary>

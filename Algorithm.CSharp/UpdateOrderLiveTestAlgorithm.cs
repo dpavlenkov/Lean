@@ -1,5 +1,4 @@
-﻿
-/*
+﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
  * 
@@ -18,9 +17,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
-using QuantConnect.Data.Market;
 using QuantConnect.Orders;
 using QuantConnect.Securities;
+using QuantConnect.Util;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -44,7 +43,7 @@ namespace QuantConnect.Algorithm.CSharp
         private const decimal LimitPercentageDelta = 0.005m;
 
         private const string Symbol = "SPY";
-        private const SecurityType SecurityType = QuantConnect.SecurityType.Equity;
+        private const SecurityType SecType = SecurityType.Equity;
 
         private readonly CircularQueue<OrderType> _orderTypesQueue = new CircularQueue<OrderType>(new []
         {
@@ -69,7 +68,7 @@ namespace QuantConnect.Algorithm.CSharp
             SetEndDate(2013, 10, 07);    //Set End Date
             SetCash(100000);             //Set Strategy Cash
             // Find more symbols here: http://quantconnect.com/data
-            AddSecurity(SecurityType, Symbol, Resolution.Second);
+            AddSecurity(SecType, Symbol, Resolution.Second);
             Security = Securities[Symbol];
 
             _orderTypesQueue.CircleCompleted += (sender, args) =>
@@ -108,7 +107,7 @@ namespace QuantConnect.Algorithm.CSharp
                 {
                     limitPrice = !isLong ? (1 + LimitPercentage) * Security.High : (1 - LimitPercentage) * Security.Low;
                 }
-                var request = new SubmitOrderRequest(orderType, SecurityType, Symbol, Quantity, stopPrice, limitPrice, Time, orderType.ToString());
+                var request = new SubmitOrderRequest(orderType, SecType, Symbol, Quantity, stopPrice, limitPrice, Time, orderType.ToString());
                 var ticket = Transactions.AddOrder(request);
                 _tickets.Add(ticket);
                 if ((decimal)Random.NextDouble() < ImmediateCancelPercentage)
@@ -187,53 +186,6 @@ namespace QuantConnect.Algorithm.CSharp
             else
             {
                 base.Log(msg);
-            }
-        }
-
-        /// <summary>
-        /// A never ending queue that will dequeue and reenqueue the same item
-        /// </summary>
-        private class CircularQueue<T>
-        {
-            private readonly T _head;
-            private readonly Queue<T> _queue;
-
-            /// <summary>
-            /// Fired when we do a full circle
-            /// </summary>
-            public event EventHandler CircleCompleted;
-
-            public CircularQueue(IEnumerable<T> items)
-            {
-                _queue = new Queue<T>();
-
-                var first = true;
-                foreach (var item in items)
-                {
-                    if (first)
-                    {
-                        first = false;
-                        _head = item;
-                    }
-                    _queue.Enqueue(item);
-                }
-            }
-
-            public T Dequeue()
-            {
-                var item = _queue.Dequeue();
-                if (item.Equals(_head))
-                {
-                    OnCircleCompleted();
-                }
-                _queue.Enqueue(item);
-                return item;
-            }
-
-            protected virtual void OnCircleCompleted()
-            {
-                var handler = CircleCompleted;
-                if (handler != null) handler(this, EventArgs.Empty);
             }
         }
     }

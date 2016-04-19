@@ -47,8 +47,20 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AddRemoveSecurityRegressionAlgorithm.cs" />
     <Compile Include="BasicTemplateAlgorithm.cs" />
+    <Compile Include="Benchmarks\EmptyMinute400EquityAlgorithm.cs" />
+    <Compile Include="Benchmarks\Symbols.cs" />
+    <Compile Include="CoarseUniverseTop5DollarVolumeAlgorithm.cs" />
+    <Compile Include="CustomBenchmarkAlgorithm.cs" />
+    <Compile Include="CustomBrokerageMessageHandlerAlgorithm.cs" />
+    <Compile Include="CustomDataRegressionAlgorithm.cs" />
+    <Compile Include="CustomDataUniverseAlgorithm.cs" />
     <Compile Include="DelistingEventsAlgorithm.cs" />
+    <Compile Include="DropboxBaseDataUniverseSelectionAlgorithm.cs" />
+    <Compile Include="EquitiesLabAlgorithm.cs" />
+    <Compile Include="HistoryAlgorithm.cs" />
+    <Compile Include="HistoryAndWarmupRegressionAlgorithm.cs" />
     <Compile Include="LimitFillRegressionAlgorithm.cs" />
     <Compile Include="BasicTemplateFillForwardAlgorithm.cs" />
     <Compile Include="BenchmarkAlgorithm.cs" />
@@ -64,6 +76,13 @@
     <Compile Include="ETFGlobalRotationAlgorithm.cs" />
     <Compile Include="IndicatorSuiteAlgorithm.cs" />
     <Compile Include="LiveFeaturesAlgorithm.cs" />
+    <Compile Include="OpeningBreakoutAlgorithm.cs" />
+    <Compile Include="DropboxUniverseSelectionAlgorithm.cs" />
+    <Compile Include="ParameterizedAlgorithm.cs" />
+    <Compile Include="UniverseSelectionDefinitionsAlgorithm.cs" />
+    <Compile Include="UserDefinedUniverseAlgorithm.cs" />
+    <Compile Include="WarmupAlgorithm.cs" />
+    <Compile Include="WarmupHistoryAlgorithm.cs" />
     <Compile Include="MACDTrendAlgorithm.cs" />
     <Compile Include="MarginCallEventsAlgorithm.cs" />
     <Compile Include="MarketOnOpenOnCloseAlgorithm.cs" />
@@ -74,11 +93,15 @@
     <Compile Include="QuandlImporterAlgorithm.cs" />
     <Compile Include="RegressionAlgorithm.cs" />
     <Compile Include="RenkoConsolidatorAlgorithm.cs" />
+    <Compile Include="ScheduledEventsAlgorithm.cs" />
     <Compile Include="StressSymbolsAlgorithm.cs" />
+    <Compile Include="StressSymbols.cs" />
     <Compile Include="TickDataFilteringAlgorithm.cs" />
+    <Compile Include="EmaCrossUniverseSelectionAlgorithm.cs" />
+    <Compile Include="UniverseSelectionRegressionAlgorithm.cs" />
     <Compile Include="UpdateOrderLiveTestAlgorithm.cs" />
     <Compile Include="UpdateOrderRegressionAlgorithm.cs" />
-    <Compile Include="UpdateOrderDemoAlgorithm.cs" />
+    <Compile Include="OrderTicketDemoAlgorithm.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Algorithm\QuantConnect.Algorithm.csproj">
@@ -92,10 +115,6 @@
     <ProjectReference Include="..\Indicators\QuantConnect.Indicators.csproj">
       <Project>{73fb2522-c3ed-4e47-8e3d-afad48a6b888}</Project>
       <Name>QuantConnect.Indicators</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Interfaces\QuantConnect.Interfaces.csproj">
-      <Project>{338f614c-4cd7-418a-bd31-8c6a8690cfbf}</Project>
-      <Name>QuantConnect.Interfaces</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

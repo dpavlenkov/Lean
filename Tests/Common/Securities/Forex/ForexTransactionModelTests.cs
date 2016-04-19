@@ -26,25 +26,24 @@ namespace QuantConnect.Tests.Common.Securities.Forex
 {
     public class ForexTransactionModelTests
     {
-        private const string Symbol = "USDJPY";
-        private SubscriptionDataConfig CreateTradeBarDataConfig(SecurityType type, string symbol)
+        private SubscriptionDataConfig CreateTradeBarDataConfig(SecurityType type)
         {
             if (type == SecurityType.Equity)
-                return new SubscriptionDataConfig(typeof(TradeBar), SecurityType.Equity, symbol, Resolution.Minute, "usa", TimeZones.NewYork, true, true, true, true, true, 0);
+                return new SubscriptionDataConfig(typeof(TradeBar), Symbols.USDJPY, Resolution.Minute, TimeZones.NewYork, TimeZones.NewYork, true, true, true);
             if (type == SecurityType.Forex)
-                return new SubscriptionDataConfig(typeof(TradeBar), SecurityType.Forex, symbol, Resolution.Minute, "fxcm", TimeZones.NewYork, true, true, true, true, true, 2);
+                return new SubscriptionDataConfig(typeof(TradeBar), Symbols.USDJPY, Resolution.Minute, TimeZones.EasternStandard, TimeZones.EasternStandard, true, true, true);
             throw new NotImplementedException(type.ToString());
         }
+
         private static readonly TimeKeeper TimeKeeper = new TimeKeeper(DateTime.UtcNow, new[] { TimeZones.NewYork });
         [Test]
         public void PerformsMarketFillBuy()
         {
             var model = new ForexTransactionModel();
-            var order = new MarketOrder(Symbol, 100, DateTime.Now, type: SecurityType.Forex);
-            var config = CreateTradeBarDataConfig(SecurityType.Forex, Symbol);
-            var security = new Security(SecurityExchangeHours.AlwaysOpen, config, 1);
+            var security = CreateSecurity();
+            var order = new MarketOrder(Symbols.USDJPY, 100, DateTime.Now, type: SecurityType.Forex);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 101.123m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 101.123m));
 
             var fill = model.MarketFill(security, order);
 
@@ -53,17 +52,16 @@ namespace QuantConnect.Tests.Common.Securities.Forex
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(security.Price + slip, fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
+
         [Test]
         public void PerformsMarketFillSell()
         {
             var model = new ForexTransactionModel();
-            var order = new MarketOrder(Symbol, -100, DateTime.Now, type: SecurityType.Forex);
-            var config = CreateTradeBarDataConfig(SecurityType.Forex, Symbol);
-            var security = new Security(SecurityExchangeHours.AlwaysOpen, config, 1);
+            var security = CreateSecurity();
+            var order = new MarketOrder(Symbols.USDJPY, -100, DateTime.Now, type: SecurityType.Forex);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 101.123m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 101.123m));
 
             var fill = model.MarketFill(security, order);
 
@@ -72,27 +70,24 @@ namespace QuantConnect.Tests.Common.Securities.Forex
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(security.Price - slip, fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsLimitFillBuy()
         {
             var model = new ForexTransactionModel();
-            var order = new LimitOrder(Symbol, 100, 101.5m, DateTime.Now, type: SecurityType.Forex);
-            var config = CreateTradeBarDataConfig(SecurityType.Forex, Symbol);
-            var security = new Security(SecurityExchangeHours.AlwaysOpen, config, 1);
+            var security = CreateSecurity();
+            var order = new LimitOrder(Symbols.USDJPY, 100, 101.5m, DateTime.Now, type: SecurityType.Forex);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 102m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 102m));
 
             var fill = model.LimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new TradeBar(DateTime.Now, Symbol, 102m, 103m, 101m, 102.3m, 100));
+            security.SetMarketPrice(new TradeBar(DateTime.Now, Symbols.USDJPY, 102m, 103m, 101m, 102.3m, 100));
 
             fill = model.LimitFill(security, order);
 
@@ -100,27 +95,24 @@ namespace QuantConnect.Tests.Common.Securities.Forex
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(Math.Min(order.LimitPrice, security.High), fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsLimitFillSell()
         {
             var model = new ForexTransactionModel();
-            var order = new LimitOrder(Symbol, -100, 101.5m, DateTime.Now, type: SecurityType.Forex);
-            var config = CreateTradeBarDataConfig(SecurityType.Forex, Symbol);
-            var security = new Security(SecurityExchangeHours.AlwaysOpen, config, 1);
+            var security = CreateSecurity();
+            var order = new LimitOrder(Symbols.USDJPY, -100, 101.5m, DateTime.Now, type: SecurityType.Forex);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 101m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 101m));
 
             var fill = model.LimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new TradeBar(DateTime.Now, Symbol, 102m, 103m, 101m, 102.3m, 100));
+            security.SetMarketPrice(new TradeBar(DateTime.Now, Symbols.USDJPY, 102m, 103m, 101m, 102.3m, 100));
 
             fill = model.LimitFill(security, order);
 
@@ -128,36 +120,32 @@ namespace QuantConnect.Tests.Common.Securities.Forex
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(Math.Max(order.LimitPrice, security.Low), fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsStopLimitFillBuy()
         {
             var model = new ForexTransactionModel();
-            var order = new StopLimitOrder(Symbol, 100, 101.5m, 101.75m, DateTime.Now, type: SecurityType.Forex);
-            var config = CreateTradeBarDataConfig(SecurityType.Forex, Symbol);
-            var security = new Security(SecurityExchangeHours.AlwaysOpen, config, 1);
+            var security = CreateSecurity();
+            var order = new StopLimitOrder(Symbols.USDJPY, 100, 101.5m, 101.75m, DateTime.Now, type: SecurityType.Forex);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 100m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 100m));
 
             var fill = model.StopLimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 102m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 102m));
 
             fill = model.StopLimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 101.66m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 101.66m));
 
             fill = model.StopLimitFill(security, order);
 
@@ -165,36 +153,32 @@ namespace QuantConnect.Tests.Common.Securities.Forex
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(order.LimitPrice, fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsStopLimitFillSell()
         {
             var model = new ForexTransactionModel();
-            var order = new StopLimitOrder(Symbol, -100, 101.75m, 101.50m, DateTime.Now, type: SecurityType.Forex);
-            var config = CreateTradeBarDataConfig(SecurityType.Forex, Symbol);
-            var security = new Security(SecurityExchangeHours.AlwaysOpen, config, 1);
+            var security = CreateSecurity();
+            var order = new StopLimitOrder(Symbols.USDJPY, -100, 101.75m, 101.50m, DateTime.Now, type: SecurityType.Forex);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 102m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 102m));
 
             var fill = model.StopLimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 101m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 101m));
 
             fill = model.StopLimitFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 101.66m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 101.66m));
 
             fill = model.StopLimitFill(security, order);
 
@@ -202,27 +186,24 @@ namespace QuantConnect.Tests.Common.Securities.Forex
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(order.LimitPrice, fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsStopMarketFillBuy()
         {
             var model = new ForexTransactionModel();
-            var order = new StopMarketOrder(Symbol, 100, 101.5m, DateTime.Now, type: SecurityType.Forex);
-            var config = CreateTradeBarDataConfig(SecurityType.Forex, Symbol);
-            var security = new Security(SecurityExchangeHours.AlwaysOpen, config, 1);
+            var security = CreateSecurity();
+            var order = new StopMarketOrder(Symbols.USDJPY, 100, 101.5m, DateTime.Now, type: SecurityType.Forex);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 101m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 101m));
 
             var fill = model.StopMarketFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 102.5m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 102.5m));
 
             fill = model.StopMarketFill(security, order);
 
@@ -232,27 +213,24 @@ namespace QuantConnect.Tests.Common.Securities.Forex
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(Math.Max(security.Price + slip, order.StopPrice), fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
         }
 
         [Test]
         public void PerformsStopMarketFillSell()
         {
             var model = new ForexTransactionModel();
-            var order = new StopMarketOrder(Symbol, -100, 101.5m, DateTime.Now, type: SecurityType.Forex);
-            var config = CreateTradeBarDataConfig(SecurityType.Forex, Symbol);
-            var security = new Security(SecurityExchangeHours.AlwaysOpen, config, 1);
+            var security = CreateSecurity();
+            var order = new StopMarketOrder(Symbols.USDJPY, -100, 101.5m, DateTime.Now, type: SecurityType.Forex);
             security.SetLocalTimeKeeper(TimeKeeper.GetLocalTimeKeeper(TimeZones.NewYork));
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 102m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 102m));
 
             var fill = model.StopMarketFill(security, order);
 
             Assert.AreEqual(0, fill.FillQuantity);
             Assert.AreEqual(0, fill.FillPrice);
             Assert.AreEqual(OrderStatus.None, fill.Status);
-            Assert.AreEqual(OrderStatus.None, order.Status);
 
-            security.SetMarketPrice(new IndicatorDataPoint(Symbol, DateTime.Now, 101m));
+            security.SetMarketPrice(new IndicatorDataPoint(Symbols.USDJPY, DateTime.Now, 101m));
 
             fill = model.StopMarketFill(security, order);
 
@@ -262,7 +240,13 @@ namespace QuantConnect.Tests.Common.Securities.Forex
             Assert.AreEqual(order.Quantity, fill.FillQuantity);
             Assert.AreEqual(Math.Min(security.Price - slip, order.StopPrice), fill.FillPrice);
             Assert.AreEqual(OrderStatus.Filled, fill.Status);
-            Assert.AreEqual(OrderStatus.Filled, order.Status);
+        }
+
+        private Security CreateSecurity()
+        {
+            var config = CreateTradeBarDataConfig(SecurityType.Forex);
+            var security = new QuantConnect.Securities.Forex.Forex(SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork), new Cash("abc", 0, 0), config, 1);
+            return security;
         }
     }
 }

@@ -29,6 +29,10 @@ namespace QuantConnect.Data
     /// </summary>
     public class SubscriptionDataConfig
     {
+        private Symbol _symbol;
+        private string _mappedSymbol;
+        private readonly SecurityIdentifier _sid;
+
         /// <summary>
         /// Type of data
         /// </summary>
@@ -40,9 +44,12 @@ namespace QuantConnect.Data
         public readonly SecurityType SecurityType;
 
         /// <summary>
-        /// Symbol of the asset we're requesting.
+        /// Symbol of the asset we're requesting: this is really a perm tick!!
         /// </summary>
-        public readonly string Symbol;
+        public Symbol Symbol
+        {
+            get { return _symbol; }
+        }
 
         /// <summary>
         /// Resolution of the asset we're requesting, second minute or tick
@@ -65,24 +72,14 @@ namespace QuantConnect.Data
         public readonly bool ExtendedMarketHours;
 
         /// <summary>
-        /// True if the data type has OHLC properties, even if dynamic data
-        /// </summary>
-        public readonly bool IsTradeBar;
-
-        /// <summary>
-        /// True if the data type has a Volume property, even if it is dynamic data
-        /// </summary>
-        public readonly bool HasVolume;
-
-        /// <summary>
         /// True if this subscription was added for the sole purpose of providing currency conversion rates via <see cref="CashBook.EnsureCurrencyDataFeeds"/>
         /// </summary>
         public readonly bool IsInternalFeed;
 
         /// <summary>
-        /// The subscription index from the SubscriptionManager
+        /// True if this subscription is for custom user data, false for QC data
         /// </summary>
-        public readonly int SubscriptionIndex;
+        public readonly bool IsCustomData;
 
         /// <summary>
         /// The sum of dividends accrued in this subscription, used for scaling total return prices
@@ -102,7 +99,15 @@ namespace QuantConnect.Data
         /// <summary>
         /// Symbol Mapping: When symbols change over time (e.g. CHASE-> JPM) need to update the symbol requested.
         /// </summary>
-        public string MappedSymbol;
+        public string MappedSymbol
+        {
+            get { return _mappedSymbol; }
+            set
+            {
+                _mappedSymbol = value;
+                _symbol = new Symbol(_sid, value);
+            }
+        }
 
         /// <summary>
         /// Gets the market / scope of the symbol
@@ -110,9 +115,14 @@ namespace QuantConnect.Data
         public readonly string Market;
 
         /// <summary>
-        /// Gets the time zone for this subscription
+        /// Gets the data time zone for this subscription
         /// </summary>
-        public readonly DateTimeZone TimeZone;
+        public readonly DateTimeZone DataTimeZone;
+
+        /// <summary>
+        /// Gets the exchange time zone for this subscription
+        /// </summary>
+        public readonly DateTimeZone ExchangeTimeZone;
 
         /// <summary>
         /// Consolidators that are registred with this subscription
@@ -123,57 +133,40 @@ namespace QuantConnect.Data
         /// Constructor for Data Subscriptions
         /// </summary>
         /// <param name="objectType">Type of the data objects.</param>
-        /// <param name="securityType">SecurityType Enum Set Equity/FOREX/Futures etc.</param>
         /// <param name="symbol">Symbol of the asset we're requesting</param>
         /// <param name="resolution">Resolution of the asset we're requesting</param>
-        /// <param name="market">The market this subscription comes from</param>
-        /// <param name="timeZone">The time zone the raw data is time stamped in</param>
+        /// <param name="dataTimeZone">The time zone the raw data is time stamped in</param>
+        /// <param name="exchangeTimeZone">Specifies the time zone of the exchange for the security this subscription is for. This
+        /// is this output time zone, that is, the time zone that will be used on BaseData instances</param>
         /// <param name="fillForward">Fill in gaps with historical data</param>
         /// <param name="extendedHours">Equities only - send in data from 4am - 8pm</param>
-        /// <param name="isTradeBar">Set to true if the objectType has Open, High, Low, and Close properties defines, does not need to directly derive from the TradeBar class
-        /// This is used for the DynamicDataConsolidator</param>
-        /// <param name="hasVolume">Set to true if the objectType has a Volume property defined. This is used for the DynamicDataConsolidator</param>
         /// <param name="isInternalFeed">Set to true if this subscription is added for the sole purpose of providing currency conversion rates,
         /// setting this flag to true will prevent the data from being sent into the algorithm's OnData methods</param>
-        /// <param name="subscriptionIndex">The subscription index from the SubscriptionManager, this MUST equal the subscription's index or all hell will break loose!</param>
-        public SubscriptionDataConfig(Type objectType, 
-            SecurityType securityType, 
-            string symbol, 
-            Resolution resolution, 
-            string market, 
-            DateTimeZone timeZone,
-            bool fillForward, 
+        /// <param name="isCustom">True if this is user supplied custom data, false for normal QC data</param>
+        public SubscriptionDataConfig(Type objectType,
+            Symbol symbol,
+            Resolution resolution,
+            DateTimeZone dataTimeZone,
+            DateTimeZone exchangeTimeZone,
+            bool fillForward,
             bool extendedHours,
-            bool isTradeBar,
-            bool hasVolume,
             bool isInternalFeed,
-            int subscriptionIndex)
+            bool isCustom = false)
         {
             Type = objectType;
-            SecurityType = securityType;
+            SecurityType = symbol.ID.SecurityType;
             Resolution = resolution;
-            Symbol = symbol.ToUpper();
+            _sid = symbol.ID;
             FillDataForward = fillForward;
             ExtendedMarketHours = extendedHours;
-            IsTradeBar = isTradeBar;
-            HasVolume = hasVolume;
             PriceScaleFactor = 1;
-            MappedSymbol = symbol;
+            MappedSymbol = symbol.Value;
             IsInternalFeed = isInternalFeed;
-            SubscriptionIndex = subscriptionIndex;
-            Market = market;
-            TimeZone = timeZone;
+            IsCustomData = isCustom;
+            Market = symbol.ID.Market;
+            DataTimeZone = dataTimeZone;
+            ExchangeTimeZone = exchangeTimeZone;
             Consolidators = new HashSet<IDataConsolidator>();
-
-            // verify the market string contains letters a-Z
-            if (string.IsNullOrWhiteSpace(market))
-            {
-                throw new ArgumentException("The market cannot be an empty string.");
-            }
-            if (!Regex.IsMatch(market, @"^[a-zA-Z]+$"))
-            {
-                throw new ArgumentException("The market must only contain letters A-Z.");
-            }
 
             switch (resolution)
             {
@@ -197,6 +190,45 @@ namespace QuantConnect.Data
                 default:
                     throw new InvalidEnumArgumentException("Unexpected Resolution: " + resolution);
             }
+        }
+
+        /// <summary>
+        /// Copy constructor with overrides
+        /// </summary>
+        /// <param name="config">The config to copy, then overrides are applied and all option</param>
+        /// <param name="objectType">Type of the data objects.</param>
+        /// <param name="symbol">Symbol of the asset we're requesting</param>
+        /// <param name="resolution">Resolution of the asset we're requesting</param>
+        /// <param name="dataTimeZone">The time zone the raw data is time stamped in</param>
+        /// <param name="exchangeTimeZone">Specifies the time zone of the exchange for the security this subscription is for. This
+        /// is this output time zone, that is, the time zone that will be used on BaseData instances</param>
+        /// <param name="fillForward">Fill in gaps with historical data</param>
+        /// <param name="extendedHours">Equities only - send in data from 4am - 8pm</param>
+        /// <param name="isInternalFeed">Set to true if this subscription is added for the sole purpose of providing currency conversion rates,
+        /// setting this flag to true will prevent the data from being sent into the algorithm's OnData methods</param>
+        /// <param name="isCustom">True if this is user supplied custom data, false for normal QC data</param>
+        public SubscriptionDataConfig(SubscriptionDataConfig config,
+            Type objectType = null,
+            Symbol symbol = null,
+            Resolution? resolution = null,
+            DateTimeZone dataTimeZone = null,
+            DateTimeZone exchangeTimeZone = null,
+            bool? fillForward = null,
+            bool? extendedHours = null,
+            bool? isInternalFeed = null,
+            bool? isCustom = null)
+            : this(
+            objectType ?? config.Type,
+            symbol ?? config.Symbol,
+            resolution ?? config.Resolution,
+            dataTimeZone ?? config.DataTimeZone, 
+            exchangeTimeZone ?? config.ExchangeTimeZone,
+            fillForward ?? config.FillDataForward,
+            extendedHours ?? config.ExtendedMarketHours,
+            isInternalFeed ?? config.IsInternalFeed,
+            isCustom ?? config.IsCustomData
+            )
+        {
         }
 
         /// <summary>
